@@ -1,0 +1,13 @@
+{
+    "filter": {
+        "date": {
+            "from": "2023-01-31T00:00:00.000Z",
+            "to": "2025-01-01T00:00:00.000Z"
+        },
+        "operation_type": [],
+        "posting_number": "",
+        "transaction_type": "all"
+    },
+    "page": 1,
+    "page_size": 1000
+}
