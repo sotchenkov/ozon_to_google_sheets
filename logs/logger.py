@@ -1,15 +1,17 @@
 import logging
 import os
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
 
-handler = logging.FileHandler("logs/logs.log", mode='a')
-formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+handler = logging.getLogger().handlers[0]
+formatter = logging.Formatter('[%(levelname)s]\t%(message)s\n')
 
 handler.setFormatter(formatter)
 
 logger.addHandler(handler)
+
 
 
 def is_running():

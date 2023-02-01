@@ -1,4 +1,5 @@
 import gspread
+import json
 
 from logs import logger
 
@@ -6,9 +7,7 @@ from logs import logger
 class GSpread:
     def __init__(self, credentials: str, sheet_name: str):
         try:
-            logger.check_file_exists(credentials)
-
-            gc = gspread.service_account(credentials)
+            gc = gspread.service_account_from_dict(json.loads(credentials))
             sh = gc.open(sheet_name)
             self.worksheet = sh.sheet1
 
