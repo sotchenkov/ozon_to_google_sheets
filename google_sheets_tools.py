@@ -5,11 +5,12 @@ from logs import logger
 
 
 class GSpread:
-    def __init__(self, credentials: str, sheet_name: str):
+    def __init__(self, credentials: str, table_name: str, sheet_name: str):
         try:
             gc = gspread.service_account_from_dict(json.loads(credentials))
-            sh = gc.open(sheet_name)
-            self.worksheet = sh.sheet1
+            sh = gc.open(table_name)
+
+            self.worksheet = sh.worksheet(sheet_name)
 
             logger.is_connected_to_google_sheets()
 

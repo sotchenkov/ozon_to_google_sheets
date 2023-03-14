@@ -7,10 +7,10 @@ from google_sheets_tools import GSpread
 
 
 def main(event, context):
-    ozon = Request(os.environ['ozon_token'], str(os.environ['ozon_id']))
+    ozon = Request(os.environ['OZON_TOKEN'], str(os.environ['OZON_ID']))
     response = ozon.get_data('https://api-seller.ozon.ru/v3/finance/transaction/list', 'data/request_body.json')
 
-    google_sheet = GSpread(os.environ['g_cred'], 'testsheet')
+    google_sheet = GSpread(os.environ['GOOGLE_CREDS'], os.environ['GOOGLE_TABLE_NAME'], os.environ['GOOGLE_SHEET_NAME'])
 
     compare_responses = Comparator(google_sheet).check_updates(response)
 
