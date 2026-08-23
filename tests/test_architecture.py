@@ -121,6 +121,14 @@ def test_service_orchestrates_new_operations() -> None:
                                     "commission": {"amount": "-10", "currency": "RUB"},
                                     "commission_ratio": "10",
                                     "sale_amount": {"amount": "100", "currency": "RUB"},
+                                    "sale_commission": {
+                                        "amount": "-10",
+                                        "currency": "RUB",
+                                    },
+                                    "seller_price": {
+                                        "amount": "100",
+                                        "currency": "RUB",
+                                    },
                                 },
                                 "delivery": {
                                     "services": [
@@ -141,7 +149,7 @@ def test_service_orchestrates_new_operations() -> None:
     accrual_types = parse_accrual_types(
         {
             "accrual_types": [
-                {"id": 7, "name": "MarketplaceServiceItemDelivToCustomer"}
+                {"id": 7, "name": "LastMileCourier"}
             ]
         }
     )
@@ -187,6 +195,43 @@ def test_service_orchestrates_new_operations() -> None:
     assert len(sheet.rows[0]) == 23
     assert sheet.rows[0][2] == 42
     assert sheet.rows[0][8] == 2
+
+
+def test_service_stops_before_sheet_lookup_when_ozon_response_is_empty() -> None:
+    ozon = FakeOzon((), (), ())
+    sheet = FakeSheet(existing_ids=["already-present"])
+    service = _service(ozon, sheet)
+
+    assert service.run() == []
+    assert ozon.calls == [
+        ("accruals", service.endpoint, service.date_from, service.date_to)
+    ]
+    assert sheet.get_ids_calls == 0
+    assert sheet.append_calls == 0
+
+
+def test_service_skips_existing_and_duplicate_accruals_without_detail_calls() -> None:
+    page = AccrualPage.from_api(
+        {
+            "accruals": [
+                _non_item_accrual(42),
+                _non_item_accrual(43),
+                _non_item_accrual(43),
+            ],
+            "last_id": "",
+        }
+    )
+    ozon = FakeOzon(page.accruals, (), ())
+    sheet = FakeSheet(existing_ids=["42"])
+    service = _service(ozon, sheet)
+
+    assert service.run() == [43]
+    assert ozon.calls == [
+        ("accruals", service.endpoint, service.date_from, service.date_to)
+    ]
+    assert sheet.operation_ids == [43]
+    assert len(sheet.rows) == 1
+    assert sheet.rows[0][2] == 43
 
 
 def test_google_adapter_keeps_legacy_update_range() -> None:
@@ -238,16 +283,41 @@ class FakeOzon:
 
 
 class FakeSheet:
-    def __init__(self) -> None:
+    def __init__(self, existing_ids: list[str] | None = None) -> None:
         self.rows: list[list[Any]] = []
         self.operation_ids: list[int] = []
+        self._existing_ids = existing_ids or []
+        self.get_ids_calls = 0
+        self.append_calls = 0
 
     def get_operation_ids(self) -> list[str]:
-        return []
+        self.get_ids_calls += 1
+        return self._existing_ids
 
     def append_rows(self, data: list[list[Any]], operation_ids: list[int]) -> None:
+        self.append_calls += 1
         self.rows = data
         self.operation_ids = operation_ids
+
+
+def _service(ozon: FakeOzon, sheet: FakeSheet) -> SyncService:
+    return SyncService(
+        ozon=ozon,
+        sheet=sheet,
+        endpoint="https://example.invalid/v1/finance/accrual/by-day",
+        date_from=date(2026, 8, 23),
+        date_to=date(2026, 8, 23),
+    )
+
+
+def _non_item_accrual(accrual_id: int) -> dict[str, Any]:
+    return {
+        "accrual_id": accrual_id,
+        "accrued_category": "NON_ITEM",
+        "date": "2026-08-23",
+        "unit_number": "service-contract",
+        "total_amount": {"amount": "-1", "currency": "RUB"},
+    }
 
 
 class FakeWorksheet:

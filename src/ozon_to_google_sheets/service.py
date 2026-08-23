@@ -49,6 +49,13 @@ class SyncService:
     def run(self) -> list[int]:
         active_logger = self.logger or logging.getLogger(__name__)
         accruals = self.ozon.get_accruals(self.endpoint, self.date_from, self.date_to)
+        if not accruals:
+            active_logger.info(
+                "Ozon returned no accruals from %s through %s",
+                self.date_from.isoformat(),
+                self.date_to.isoformat(),
+            )
+            return []
         new_accruals = self._find_new_accruals(accruals)
         if not new_accruals:
             active_logger.info(
@@ -69,7 +76,11 @@ class SyncService:
             for accrual in new_accruals
             if accrual.unit_number and (accrual.posting.products or accrual.item_fees)
         ]
-        posting_accruals = self.ozon.get_posting_accruals(self.endpoint, posting_numbers)
+        posting_accruals = (
+            self.ozon.get_posting_accruals(self.endpoint, posting_numbers)
+            if posting_numbers
+            else ()
+        )
         rows = AccrualTransformer(logger=active_logger).transform(
             new_accruals,
             accrual_types,
