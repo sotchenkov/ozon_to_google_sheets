@@ -10,6 +10,14 @@ import pytest
 
 from ozon_to_google_sheets.config import ConfigError, load_config
 from ozon_to_google_sheets.google_sheets import GoogleSheetsAdapter
+from ozon_to_google_sheets.models import (
+    Accrual,
+    AccrualPage,
+    AccrualType,
+    PostingAccrual,
+    parse_accrual_types,
+    parse_posting_accruals,
+)
 from ozon_to_google_sheets.service import SyncService
 
 
@@ -95,41 +103,90 @@ def test_config_validates_accrual_period(
 
 
 def test_service_orchestrates_new_operations() -> None:
-    payload = {
-        "result": {
-            "operations": [
+    accruals = AccrualPage.from_api(
+        {
+            "accruals": [
                 {
-                    "operation_date": "2026-08-23T12:00:00.000Z",
-                    "operation_type_name": "OperationAgentDeliveredToCustomer",
-                    "operation_id": 42,
+                    "accrual_id": 42,
+                    "accrued_category": "POSTING",
+                    "date": "2026-08-23",
+                    "unit_number": "posting-for-test",
+                    "total_amount": {"amount": "85", "currency": "RUB"},
                     "posting": {
-                        "posting_number": "posting-for-test",
                         "delivery_schema": "FBO",
-                        "order_date": "2026-08-22T10:00:00.000Z",
+                        "products": [
+                            {
+                                "sku": 1001,
+                                "commission": {
+                                    "commission": {"amount": "-10", "currency": "RUB"},
+                                    "commission_ratio": "10",
+                                    "sale_amount": {"amount": "100", "currency": "RUB"},
+                                },
+                                "delivery": {
+                                    "services": [
+                                        {
+                                            "type_id": 7,
+                                            "accrued": {"amount": "-5", "currency": "RUB"},
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
                     },
-                    "accruals_for_sale": 100.0,
-                    "sale_commission": -10.0,
-                    "amount": 90.0,
-                    "items": [{"sku": 1001, "name": "Synthetic item"}],
-                    "services": [
-                        {"name": "MarketplaceServiceItemFulfillment", "price": -2.0},
-                        {"name": "MarketplaceServiceItemDelivToCustomer", "price": -3.0},
+                }
+            ],
+            "last_id": "",
+        }
+    ).accruals
+    accrual_types = parse_accrual_types(
+        {
+            "accrual_types": [
+                {"id": 7, "name": "MarketplaceServiceItemDelivToCustomer"}
+            ]
+        }
+    )
+    posting_accruals = parse_posting_accruals(
+        {
+            "posting_accruals": [
+                {
+                    "posting_number": "posting-for-test",
+                    "accruals": [
+                        {
+                            "seller_price": {"amount": "100", "currency": "RUB"},
+                            "sku": 1001,
+                            "type_id": 7,
+                            "accrual_date": "2026-08-23",
+                            "accrued": {"amount": "-5", "currency": "RUB"},
+                            "quantity": 2,
+                        }
                     ],
                 }
             ]
         }
-    }
-    ozon = FakeOzon(payload)
+    )
+    ozon = FakeOzon(accruals, accrual_types, posting_accruals)
     sheet = FakeSheet()
-    service = SyncService(ozon=ozon, sheet=sheet, endpoint="https://example.invalid/ozon")
+    endpoint = "https://example.invalid/v1/finance/accrual/by-day"
+    service = SyncService(
+        ozon=ozon,
+        sheet=sheet,
+        endpoint=endpoint,
+        date_from=date(2026, 8, 23),
+        date_to=date(2026, 8, 23),
+    )
 
     operation_ids = service.run()
 
     assert operation_ids == [42]
-    assert ozon.calls == [("https://example.invalid/ozon", None)]
+    assert ozon.calls == [
+        ("accruals", endpoint, date(2026, 8, 23), date(2026, 8, 23)),
+        ("types", endpoint),
+        ("postings", endpoint, ("posting-for-test",)),
+    ]
     assert sheet.operation_ids == [42]
     assert len(sheet.rows[0]) == 23
     assert sheet.rows[0][2] == 42
+    assert sheet.rows[0][8] == 2
 
 
 def test_google_adapter_keeps_legacy_update_range() -> None:
@@ -146,22 +203,38 @@ def test_google_adapter_keeps_legacy_update_range() -> None:
     }
 
 
-class FakeResponse:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._payload = payload
-
-    def json(self) -> dict[str, Any]:
-        return self._payload
-
-
 class FakeOzon:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._response = FakeResponse(payload)
-        self.calls: list[tuple[str, Path | None]] = []
+    def __init__(
+        self,
+        accruals: tuple[Accrual, ...],
+        accrual_types: tuple[AccrualType, ...],
+        posting_accruals: tuple[PostingAccrual, ...],
+    ) -> None:
+        self._accruals = accruals
+        self._accrual_types = accrual_types
+        self._posting_accruals = posting_accruals
+        self.calls: list[tuple[Any, ...]] = []
 
-    def get_data(self, url: str, request_body: Path | None = None) -> FakeResponse:
-        self.calls.append((url, request_body))
-        return self._response
+    def get_accruals(
+        self,
+        endpoint: str,
+        date_from: date,
+        date_to: date,
+    ) -> tuple[Accrual, ...]:
+        self.calls.append(("accruals", endpoint, date_from, date_to))
+        return self._accruals
+
+    def get_accrual_types(self, accrual_endpoint: str) -> tuple[AccrualType, ...]:
+        self.calls.append(("types", accrual_endpoint))
+        return self._accrual_types
+
+    def get_posting_accruals(
+        self,
+        accrual_endpoint: str,
+        posting_numbers: list[str],
+    ) -> tuple[PostingAccrual, ...]:
+        self.calls.append(("postings", accrual_endpoint, tuple(posting_numbers)))
+        return self._posting_accruals
 
 
 class FakeSheet:

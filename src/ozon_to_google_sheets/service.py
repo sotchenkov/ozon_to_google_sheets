@@ -3,20 +3,30 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from datetime import date
 from typing import Any, Protocol
 
-from .parser import TransactionParser
-
-
-class Response(Protocol):
-    def json(self) -> Mapping[str, Any]: ...
+from .models import Accrual, AccrualType, PostingAccrual
+from .parser import AccrualTransformer
 
 
 class OzonGateway(Protocol):
-    def get_data(self, url: str, request_body: Path | None = None) -> Response: ...
+    def get_accruals(
+        self,
+        endpoint: str,
+        date_from: date,
+        date_to: date,
+    ) -> tuple[Accrual, ...]: ...
+
+    def get_accrual_types(self, accrual_endpoint: str) -> tuple[AccrualType, ...]: ...
+
+    def get_posting_accruals(
+        self,
+        accrual_endpoint: str,
+        posting_numbers: Sequence[str],
+    ) -> tuple[PostingAccrual, ...]: ...
 
 
 class OperationsSheet(Protocol):
@@ -27,40 +37,64 @@ class OperationsSheet(Protocol):
 
 @dataclass(slots=True)
 class SyncService:
-    """Fetch, compare, transform, and append new Ozon operations."""
+    """Fetch, compare, transform, and append new Ozon accruals."""
 
     ozon: OzonGateway
     sheet: OperationsSheet
     endpoint: str
-    request_body: Path | None = None
+    date_from: date
+    date_to: date
     logger: logging.Logger | None = None
 
     def run(self) -> list[int]:
-        response = self.ozon.get_data(self.endpoint, self.request_body)
-        payload = response.json()
-        operation_ids = self._find_new_operation_ids(payload)
-
         active_logger = self.logger or logging.getLogger(__name__)
-        if operation_ids:
-            active_logger.info("Found %s new operations", len(operation_ids))
-        else:
-            active_logger.info("There have been no new operations in the last hour")
+        accruals = self.ozon.get_accruals(self.endpoint, self.date_from, self.date_to)
+        new_accruals = self._find_new_accruals(accruals)
+        if not new_accruals:
+            active_logger.info(
+                "No new Ozon accruals from %s through %s",
+                self.date_from.isoformat(),
+                self.date_to.isoformat(),
+            )
             return []
 
-        rows: list[list[Any]] = []
-        for operation_id in operation_ids:
-            parsed = TransactionParser(payload, operation_id, logger=active_logger).parse()
-            if parsed is None:
-                raise RuntimeError(f"Operation {operation_id} could not be parsed")
-            rows.append(parsed.as_list())
-
-        self.sheet.append_rows(rows, operation_ids)
+        active_logger.info("Found %s new Ozon accruals", len(new_accruals))
+        accrual_types = (
+            self.ozon.get_accrual_types(self.endpoint)
+            if any(_has_fees(accrual) for accrual in new_accruals)
+            else ()
+        )
+        posting_numbers = [
+            accrual.unit_number
+            for accrual in new_accruals
+            if accrual.unit_number and (accrual.posting.products or accrual.item_fees)
+        ]
+        posting_accruals = self.ozon.get_posting_accruals(self.endpoint, posting_numbers)
+        rows = AccrualTransformer(logger=active_logger).transform(
+            new_accruals,
+            accrual_types,
+            posting_accruals,
+        )
+        operation_ids = [accrual.accrual_id for accrual in new_accruals]
+        self.sheet.append_rows([row.as_list() for row in rows], operation_ids)
         return operation_ids
 
-    def _find_new_operation_ids(self, payload: Mapping[str, Any]) -> list[int]:
-        existing_ids = self.sheet.get_operation_ids()
-        return [
-            operation["operation_id"]
-            for operation in payload["result"]["operations"]
-            if str(operation["operation_id"]) not in existing_ids
-        ]
+    def _find_new_accruals(self, accruals: Sequence[Accrual]) -> list[Accrual]:
+        existing_ids = set(self.sheet.get_operation_ids())
+        seen_ids: set[int] = set()
+        result: list[Accrual] = []
+        for accrual in sorted(accruals, key=lambda item: (item.date, item.accrual_id)):
+            if str(accrual.accrual_id) in existing_ids or accrual.accrual_id in seen_ids:
+                continue
+            seen_ids.add(accrual.accrual_id)
+            result.append(accrual)
+        return result
+
+
+def _has_fees(accrual: Accrual) -> bool:
+    return bool(
+        accrual.non_item_fee
+        or accrual.container_fees
+        or any(item.fees for item in accrual.item_fees)
+        or any(product.delivery.services for product in accrual.posting.products)
+    )

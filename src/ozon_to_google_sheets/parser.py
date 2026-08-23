@@ -1,77 +1,146 @@
-"""Transform Ozon transaction payloads into domain rows."""
+"""Deterministically transform Ozon finance accruals into worksheet rows."""
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
 
-from .models import TransactionRow
+from .models import (
+    Accrual,
+    AccrualFee,
+    AccrualType,
+    PostingAccrual,
+    PostingProduct,
+    TransactionRow,
+)
+
+SERVICE_FIELDS: Mapping[str, str] = {
+    "MarketplaceServiceItemFulfillment": "order_assembly",
+    "MarketplaceServiceItemDropoffPVZ": "shipment_processing",
+    "MarketplaceServiceItemDropoffSC": "shipment_processing",
+    "MarketplaceServiceItemDirectFlowTrans": "highway",
+    "MarketplaceServiceItemDelivToCustomer": "last_mile",
+    "MarketplaceServiceItemReturnFlowTrans": "reverse_highway",
+    "MarketplaceServiceItemReturnAfterDelivToCustomer": "refund_processing",
+    "MarketplaceServiceItemReturnNotDelivToCustomer": (
+        "processing_of_cancelled_or_unclaimed_item"
+    ),
+    "MarketplaceServiceItemReturnPartGoodsCustomer": "processing_of_unbought_item",
+    "MarketplaceServiceItemDirectFlowLogistic": "logistics",
+    "MarketplaceServiceItemReturnFlowLogistic": "reverse_logistics",
+}
 
 
-class TransactionParser:
-    """Parse one operation while preserving the current output semantics."""
+class AccrualTransformer:
+    """Convert typed API data while preserving the legacy 23-column sheet contract."""
 
-    def __init__(
-        self,
-        response: Mapping[str, Any],
-        operation_id: int,
-        *,
-        logger: logging.Logger | None = None,
-    ) -> None:
-        self._response = response
-        self._operation_id = operation_id
+    def __init__(self, *, logger: logging.Logger | None = None) -> None:
         self._logger = logger or logging.getLogger(__name__)
 
-    def parse(self) -> TransactionRow | None:
-        for operation in self._response["result"]["operations"]:
-            if operation["operation_id"] != self._operation_id:
+    def transform(
+        self,
+        accruals: Sequence[Accrual],
+        accrual_types: Sequence[AccrualType],
+        posting_accruals: Sequence[PostingAccrual],
+    ) -> list[TransactionRow]:
+        type_names = {item.type_id: item.name for item in accrual_types}
+        quantities = _posting_quantities(posting_accruals)
+        rows: list[TransactionRow] = []
+        for accrual in sorted(accruals, key=lambda item: (item.date, item.accrual_id)):
+            rows.extend(self._transform_accrual(accrual, type_names, quantities))
+        return rows
+
+    def _transform_accrual(
+        self,
+        accrual: Accrual,
+        type_names: Mapping[int, str],
+        quantities: Mapping[tuple[str, int], int],
+    ) -> list[TransactionRow]:
+        rows: list[TransactionRow] = []
+        rows_by_sku: dict[int, TransactionRow] = {}
+
+        for product in sorted(accrual.posting.products, key=lambda item: item.sku):
+            row = self._base_row(accrual, product.sku, quantities)
+            self._apply_commission(row, product)
+            self._apply_fees(row, product.delivery.services, type_names)
+            rows.append(row)
+            rows_by_sku.setdefault(product.sku, row)
+
+        for item_fees in sorted(accrual.item_fees, key=lambda item: item.sku):
+            row = rows_by_sku.get(item_fees.sku)
+            if row is None:
+                row = self._base_row(accrual, item_fees.sku, quantities)
+                rows.append(row)
+                rows_by_sku[item_fees.sku] = row
+            self._apply_fees(row, item_fees.fees, type_names)
+
+        if not rows:
+            rows.append(self._base_row(accrual, None, quantities))
+
+        if accrual.non_item_fee is not None:
+            self._apply_fees(rows[0], (accrual.non_item_fee,), type_names)
+        self._apply_fees(rows[0], accrual.container_fees, type_names)
+
+        # The API total belongs to the parent accrual. Store it once so multiple
+        # product rows cannot multiply the operation amount in sheet totals.
+        rows[0].amount = accrual.total_amount.amount
+        return rows
+
+    @staticmethod
+    def _base_row(
+        accrual: Accrual,
+        sku: int | None,
+        quantities: Mapping[tuple[str, int], int],
+    ) -> TransactionRow:
+        operation_date = accrual.date[:10]
+        count = quantities.get((accrual.unit_number, sku), 1) if sku is not None else 0
+        return TransactionRow(
+            operation_date=operation_date,
+            operation_type_name=accrual.accrued_category,
+            operation_id=accrual.accrual_id,
+            posting_number=accrual.unit_number,
+            order_date=operation_date,
+            delivery_schema=accrual.posting.delivery_schema,
+            sku=sku,
+            count=count,
+        )
+
+    @staticmethod
+    def _apply_commission(row: TransactionRow, product: PostingProduct) -> None:
+        commission = product.commission
+        row.accruals_for_sale = commission.sale_amount.amount
+        row.sale_commission = commission.commission.amount
+        ratio = commission.commission_ratio.strip()
+        if ratio:
+            row.sale_commission_percents = ratio if ratio.endswith("%") else f"{ratio}%"
+
+    def _apply_fees(
+        self,
+        row: TransactionRow,
+        fees: Iterable[AccrualFee],
+        type_names: Mapping[int, str],
+    ) -> None:
+        for fee in fees:
+            service_name = type_names.get(fee.type_id)
+            field = SERVICE_FIELDS.get(service_name or "")
+            if field is None:
+                self._logger.warning(
+                    "Unmapped Ozon accrual type %s (%s) for operation %s",
+                    fee.type_id,
+                    service_name or "unknown",
+                    row.operation_id,
+                )
                 continue
+            setattr(row, field, getattr(row, field) + fee.accrued.amount)
 
-            row = TransactionRow()
-            try:
-                self._parse_head(operation, row)
-                self._parse_item(operation, row)
-                self._parse_services(operation, row)
-            except RuntimeError:
-                self._logger.exception("Could not parse operation %s", operation["operation_id"])
-                return None
 
-            self._logger.info("Operation %s successfully parsed", operation["operation_id"])
-            return row
-
-        return None
-
-    @staticmethod
-    def _parse_head(operation: Mapping[str, Any], row: TransactionRow) -> None:
-        row.operation_date = operation["operation_date"][:10]
-        row.operation_type_name = operation["operation_type_name"]
-        row.operation_id = operation["operation_id"]
-        row.posting_number = operation["posting"]["posting_number"]
-        row.delivery_schema = operation["posting"]["delivery_schema"]
-        row.accruals_for_sale = operation["accruals_for_sale"]
-        row.sale_commission = operation["sale_commission"]
-        row.amount = operation["amount"]
-
-        order_date = operation["posting"]["order_date"]
-        row.order_date = order_date[:10] if order_date != "" else row.operation_date
-
-        if row.accruals_for_sale != 0:
-            percentage = int(operation["sale_commission"] / row.accruals_for_sale * -100)
-            row.sale_commission_percents = f"{percentage}%"
-
-    @staticmethod
-    def _parse_item(operation: Mapping[str, Any], row: TransactionRow) -> None:
-        if operation["items"]:
-            row.sku = operation["items"][0]["sku"]
-            row.name = operation["items"][0]["name"]
-
-    @staticmethod
-    def _parse_services(operation: Mapping[str, Any], row: TransactionRow) -> None:
-        for service in operation["services"]:
-            if service["name"] == "MarketplaceServiceItemFulfillment":
-                row.order_assembly = service["price"]
-            else:
-                # The original truthy `or` condition routed every other service here.
-                # Preserve that behavior until service mapping is handled as a separate task.
-                row.shipment_processing = service["price"]
+def _posting_quantities(
+    posting_accruals: Sequence[PostingAccrual],
+) -> dict[tuple[str, int], int]:
+    quantities: dict[tuple[str, int], int] = {}
+    for accrual in posting_accruals:
+        key = (accrual.posting_number, accrual.sku)
+        quantity = abs(accrual.quantity)
+        if quantity > 0:
+            quantities[key] = max(quantities.get(key, 0), quantity)
+    return quantities

@@ -23,7 +23,8 @@ def run(config: AppConfig) -> list[int]:
             ozon=ozon,
             sheet=sheet,
             endpoint=config.ozon_endpoint,
-            request_body=config.request_body,
+            date_from=config.date_from,
+            date_to=config.date_to,
             logger=logger,
         )
         return service.run()
