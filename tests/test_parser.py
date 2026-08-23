@@ -50,9 +50,9 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
     types = parse_accrual_types(
         {
             "accrual_types": [
-                _type(1, "Fulfillment"),
-                _type(2, "DropoffSC"),
-                _type(3, "LastMileCourier"),
+                _type(1, "Logistic"),
+                _type(2, "LastMileCourier"),
+                _type(3, "DeliveryToHandoverPlaceByOzon"),
                 _type(4, "ReturnFlowLogistic"),
                 _type(99, "FutureOzonService"),
             ]
@@ -77,11 +77,10 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
     assert rows[0].accruals_for_sale == Decimal("110.00")
     assert rows[0].sale_commission == Decimal("-11.00")
     assert rows[0].sale_commission_percents == "10%"
-    assert rows[0].order_assembly == Decimal("-2.00")
-    assert rows[0].shipment_processing == Decimal("-3.00")
-    assert rows[0].last_mile == Decimal("-4.00")
+    assert rows[0].logistics == Decimal("-2.00")
+    assert rows[0].last_mile == Decimal("-7.00")
     assert rows[0].reverse_logistics == Decimal("-5.00")
-    assert rows[1].shipment_processing == Decimal("-2.00")
+    assert rows[1].last_mile == Decimal("-2.00")
     assert "Unmapped Ozon accrual type 99 (FutureOzonService)" in caplog.text
 
 
@@ -114,7 +113,7 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
         }
     )
     types = parse_accrual_types(
-        {"accrual_types": [_type(5, "ReturnFlowTrans")]}
+        {"accrual_types": [_type(5, "PickUpPointReturnAcceptance")]}
     )
 
     rows = AccrualTransformer().transform(page.accruals, types, ())
@@ -122,7 +121,7 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
     assert [row.operation_id for row in rows] == [41, 41, 43]
     assert [row.sku for row in rows] == [3001, 3002, None]
     assert [row.count for row in rows] == [1, 1, 0]
-    assert rows[0].reverse_highway == Decimal("-12.00")
+    assert rows[0].refund_processing == Decimal("-12.00")
     assert rows[0].amount == Decimal("-12.00")
     assert rows[1].amount == Decimal("0")
     assert rows[2].amount == Decimal("0")

@@ -16,39 +16,17 @@ from .models import (
 
 SERVICE_FIELDS: Mapping[str, str] = {
     # Current /v1/finance/accrual/types names.
-    "Fulfillment": "order_assembly",
-    "DropoffPVZ": "shipment_processing",
-    "DropoffSC": "shipment_processing",
-    "DirectFlowTrans": "highway",
     "LastMileCourier": "last_mile",
     "DeliveryToHandoverPlaceByOzon": "last_mile",
-    "ReturnFlowTrans": "reverse_highway",
-    "ReturnAfterDelivToCustomer": "refund_processing",
     "PickUpPointReturnAcceptance": "refund_processing",
-    "ReturnNotDelivToCustomer": "processing_of_cancelled_or_unclaimed_item",
     "Cancellation": "processing_of_cancelled_or_unclaimed_item",
-    "ReturnPartGoodsCustomer": "processing_of_unbought_item",
     "Logistic": "logistics",
     "ReturnFlowLogistic": "reverse_logistics",
-    # Legacy aliases retained for accounts returning the former system names.
-    "MarketplaceServiceItemFulfillment": "order_assembly",
-    "MarketplaceServiceItemDropoffPVZ": "shipment_processing",
-    "MarketplaceServiceItemDropoffSC": "shipment_processing",
-    "MarketplaceServiceItemDirectFlowTrans": "highway",
-    "MarketplaceServiceItemDelivToCustomer": "last_mile",
-    "MarketplaceServiceItemReturnFlowTrans": "reverse_highway",
-    "MarketplaceServiceItemReturnAfterDelivToCustomer": "refund_processing",
-    "MarketplaceServiceItemReturnNotDelivToCustomer": (
-        "processing_of_cancelled_or_unclaimed_item"
-    ),
-    "MarketplaceServiceItemReturnPartGoodsCustomer": "processing_of_unbought_item",
-    "MarketplaceServiceItemDirectFlowLogistic": "logistics",
-    "MarketplaceServiceItemReturnFlowLogistic": "reverse_logistics",
 }
 
 
 class AccrualTransformer:
-    """Convert typed API data while preserving the legacy 23-column sheet contract."""
+    """Convert typed accrual data to the configured 23-column sheet format."""
 
     def __init__(self, *, logger: logging.Logger | None = None) -> None:
         self._logger = logger or logging.getLogger(__name__)

@@ -109,7 +109,7 @@ def test_client_fetches_types_and_batches_unique_postings() -> None:
             FakeResponse(
                 payload={
                     "accrual_types": [
-                        {"id": 7, "name": "MarketplaceServiceItemDelivToCustomer"}
+                        {"id": 7, "name": "LastMileCourier"}
                     ]
                 }
             ),

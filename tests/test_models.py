@@ -113,7 +113,7 @@ def test_type_and_posting_models_parse_empty_and_populated_responses() -> None:
     types = parse_accrual_types(
         {
             "accrual_types": [
-                {"id": 7, "name": "MarketplaceServiceItemDelivToCustomer", "description": ""}
+                {"id": 7, "name": "LastMileCourier", "description": ""}
             ]
         }
     )

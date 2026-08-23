@@ -234,7 +234,7 @@ def test_service_skips_existing_and_duplicate_accruals_without_detail_calls() ->
     assert sheet.rows[0][2] == 43
 
 
-def test_google_adapter_keeps_legacy_update_range() -> None:
+def test_google_adapter_keeps_existing_update_range() -> None:
     worksheet = FakeWorksheet()
     adapter = GoogleSheetsAdapter(worksheet)
     rows = [["value"] * 23]

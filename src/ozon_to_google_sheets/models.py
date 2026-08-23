@@ -299,7 +299,7 @@ def parse_posting_accruals(value: object) -> tuple[PostingAccrual, ...]:
 
 @dataclass(slots=True)
 class TransactionRow:
-    """One Google Sheets row, in the legacy 23-column order."""
+    """One Google Sheets row in the adapter's stable 23-column order."""
 
     operation_date: str = ""
     operation_type_name: str = ""
