@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from decimal import Decimal
 
 import pytest
 
 from ozon_to_google_sheets.models import (
+    TRANSACTION_COLUMNS,
     AccrualPage,
     OzonPayloadError,
     TransactionRow,
@@ -151,3 +153,7 @@ def test_transaction_row_converts_exact_money_for_sheet_transport() -> None:
     assert len(values) == 23
     assert values[9] == 10.2
     assert values[22] == 9.1
+
+
+def test_transaction_columns_match_the_row_model() -> None:
+    assert tuple(field.name for field in fields(TransactionRow)) == TRANSACTION_COLUMNS

@@ -9,18 +9,33 @@ from typing import Any, Protocol
 
 import gspread
 
-OPERATION_ID_COLUMN = 3
-OPERATION_ID_INDEX = OPERATION_ID_COLUMN - 1
+from .models import TRANSACTION_COLUMNS
+
+SHEET_HEADER = TRANSACTION_COLUMNS
+COLUMN_COUNT = len(SHEET_HEADER)
+OPERATION_ID_INDEX = SHEET_HEADER.index("operation_id")
+SKU_INDEX = SHEET_HEADER.index("sku")
 FIRST_DATA_ROW = 2
 LAST_COLUMN = "W"
+SHEET_RANGE = f"A1:{LAST_COLUMN}"
+RowKey = tuple[str, str]
 
 
 class GoogleSheetsError(RuntimeError):
     """Raised when Google Sheets cannot be accessed or updated."""
 
 
+class GoogleSheetsSchemaError(GoogleSheetsError):
+    """Raised when worksheet or incoming rows do not match the stable schema."""
+
+
 class Worksheet(Protocol):
-    def col_values(self, col: int) -> list[str]: ...
+    def get(
+        self,
+        range_name: str,
+        *,
+        value_render_option: str,
+    ) -> Sequence[Sequence[Any]]: ...
 
     def batch_update(
         self,
@@ -29,19 +44,11 @@ class Worksheet(Protocol):
         value_input_option: str,
     ) -> Any: ...
 
-    def delete_rows(self, start_index: int, end_index: int | None = None) -> Any: ...
-
-    def update(
-        self,
-        values: Sequence[Sequence[Any]],
-        range_name: str,
-        *,
-        value_input_option: str,
-    ) -> Any: ...
+    def batch_clear(self, ranges: Sequence[str]) -> Any: ...
 
 
 class GoogleSheetsAdapter:
-    """Upsert transaction rows in one worksheet by Ozon accrual ID."""
+    """Reconcile transaction rows in one worksheet by operation and SKU."""
 
     def __init__(self, worksheet: Worksheet, *, logger: logging.Logger | None = None) -> None:
         self._worksheet = worksheet
@@ -81,67 +88,164 @@ class GoogleSheetsAdapter:
         return cls(worksheet, logger=active_logger)
 
     def get_operation_ids(self) -> list[str]:
-        return self._worksheet.col_values(OPERATION_ID_COLUMN)[1:]
-
-    def _next_row(self) -> int:
-        return len(self._worksheet.col_values(1)) + 1
+        values = self._read_values()
+        return [
+            operation_id
+            for row in values[FIRST_DATA_ROW - 1 :]
+            if (operation_id := _operation_id(row))
+        ]
 
     def upsert_rows(self, data: list[list[Any]]) -> None:
         if not data:
             return
 
-        rows_by_id = _group_rows_by_operation(data)
-        existing_rows = _index_existing_rows(self.get_operation_ids())
+        incoming_rows = _index_incoming_rows(data)
+        sheet_values = self._read_values()
+        header = sheet_values[0] if sheet_values else []
         replacements: list[tuple[int, list[Any]]] = []
-        rows_to_delete: list[int] = []
+        rows_to_clear: set[int] = set()
         rows_to_append: list[list[Any]] = []
 
-        for operation_id, incoming_rows in rows_by_id.items():
-            positions = existing_rows.get(operation_id, [])
-            common_count = min(len(positions), len(incoming_rows))
+        if _header_needs_update(header):
+            replacements.append((1, list(SHEET_HEADER)))
+
+        existing_rows = _index_existing_rows(sheet_values)
+        incoming_operation_ids = {key[0] for key in incoming_rows}
+        for key, row in incoming_rows.items():
+            positions = existing_rows.get(key, [])
+            if positions:
+                canonical_row = positions[0]
+                existing_row = _padded_row(sheet_values[canonical_row - 1])
+                if existing_row != row:
+                    replacements.append((canonical_row, row))
+                rows_to_clear.update(positions[1:])
+            else:
+                rows_to_append.append(row)
+
+        for key, positions in existing_rows.items():
+            if key[0] in incoming_operation_ids and key not in incoming_rows:
+                rows_to_clear.update(positions)
+
+        if rows_to_append:
+            first_row = max(FIRST_DATA_ROW, _last_nonempty_row(sheet_values) + 1)
             replacements.extend(
-                zip(positions[:common_count], incoming_rows[:common_count], strict=True)
+                (first_row + offset, row) for offset, row in enumerate(rows_to_append)
             )
-            rows_to_delete.extend(positions[common_count:])
-            rows_to_append.extend(incoming_rows[common_count:])
 
         updates = _build_update_ranges(replacements)
         if updates:
-            self._worksheet.batch_update(updates, value_input_option="USER_ENTERED")
+            try:
+                self._worksheet.batch_update(updates, value_input_option="RAW")
+            except Exception as error:
+                message = "Could not write transaction rows to Google Sheets"
+                self._logger.exception(message)
+                raise GoogleSheetsError(message) from error
 
-        for first_row, last_row in _descending_contiguous_ranges(rows_to_delete):
-            self._worksheet.delete_rows(first_row, last_row)
+        clear_ranges = _build_clear_ranges(rows_to_clear)
+        if clear_ranges:
+            try:
+                self._worksheet.batch_clear(clear_ranges)
+            except Exception as error:
+                message = "Could not clear duplicate or stale Google Sheets rows"
+                self._logger.exception(message)
+                raise GoogleSheetsError(message) from error
 
-        if rows_to_append:
-            first_row = self._next_row()
-            last_row = first_row + len(rows_to_append) - 1
-            self._worksheet.update(
-                range_name=f"A{first_row}:{LAST_COLUMN}{last_row}",
-                values=rows_to_append,
-                value_input_option="USER_ENTERED",
-            )
-
-        for operation_id in rows_by_id:
+        for operation_id in sorted(incoming_operation_ids):
             self._logger.info("Operation %s synchronized with Google Sheets", operation_id)
 
+    def _read_values(self) -> list[list[Any]]:
+        try:
+            values = self._worksheet.get(
+                SHEET_RANGE,
+                value_render_option="UNFORMATTED_VALUE",
+            )
+        except Exception as error:
+            message = "Could not read transaction rows from Google Sheets"
+            self._logger.exception(message)
+            raise GoogleSheetsError(message) from error
+        return [list(row) for row in values]
 
-def _group_rows_by_operation(data: Sequence[list[Any]]) -> dict[str, list[list[Any]]]:
-    rows_by_id: dict[str, list[list[Any]]] = {}
-    for row in data:
-        if len(row) <= OPERATION_ID_INDEX or row[OPERATION_ID_INDEX] in (None, ""):
-            raise ValueError("Every transaction row must contain an operation ID")
-        operation_id = str(row[OPERATION_ID_INDEX]).strip()
-        rows_by_id.setdefault(operation_id, []).append(row)
-    return rows_by_id
+
+def _index_incoming_rows(data: Sequence[list[Any]]) -> dict[RowKey, list[Any]]:
+    rows_by_key: dict[RowKey, list[Any]] = {}
+    for position, source_row in enumerate(data, start=1):
+        row = list(source_row)
+        if len(row) != COLUMN_COUNT:
+            raise GoogleSheetsSchemaError(
+                f"Transaction row {position} has {len(row)} columns; expected {COLUMN_COUNT}"
+            )
+        key = _row_key(row)
+        if not key[0]:
+            raise GoogleSheetsSchemaError(
+                f"Transaction row {position} must contain an operation_id"
+            )
+        if key in rows_by_key:
+            raise GoogleSheetsSchemaError(
+                "Transaction rows must have unique operation_id and sku values; "
+                f"duplicate key {key!r}"
+            )
+        rows_by_key[key] = row
+    return rows_by_key
 
 
-def _index_existing_rows(operation_ids: Sequence[str]) -> dict[str, list[int]]:
-    rows_by_id: dict[str, list[int]] = {}
-    for row_number, operation_id in enumerate(operation_ids, start=FIRST_DATA_ROW):
-        normalized = operation_id.strip()
-        if normalized:
-            rows_by_id.setdefault(normalized, []).append(row_number)
-    return rows_by_id
+def _index_existing_rows(values: Sequence[Sequence[Any]]) -> dict[RowKey, list[int]]:
+    rows_by_key: dict[RowKey, list[int]] = {}
+    for row_number, row in enumerate(values[FIRST_DATA_ROW - 1 :], start=FIRST_DATA_ROW):
+        key = _row_key(row)
+        if key[0]:
+            rows_by_key.setdefault(key, []).append(row_number)
+    return rows_by_key
+
+
+def _header_needs_update(header: Sequence[Any]) -> bool:
+    needs_update = len(header) < COLUMN_COUNT
+    for index, expected in enumerate(SHEET_HEADER):
+        actual = header[index] if index < len(header) else ""
+        if _is_blank(actual):
+            needs_update = True
+        elif str(actual).strip() != expected:
+            raise GoogleSheetsSchemaError(
+                f"Unexpected header in column {index + 1}: expected {expected!r}, found {actual!r}"
+            )
+    return needs_update
+
+
+def _row_key(row: Sequence[Any]) -> RowKey:
+    return (_operation_id(row), _identifier_at(row, SKU_INDEX))
+
+
+def _operation_id(row: Sequence[Any]) -> str:
+    return _identifier_at(row, OPERATION_ID_INDEX)
+
+
+def _identifier_at(row: Sequence[Any], index: int) -> str:
+    if index >= len(row) or _is_blank(row[index]):
+        return ""
+    value = row[index]
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _padded_row(row: Sequence[Any]) -> list[Any]:
+    return [*row[:COLUMN_COUNT], *("" for _ in range(max(0, COLUMN_COUNT - len(row))))]
+
+
+def _last_nonempty_row(values: Sequence[Sequence[Any]]) -> int:
+    return max(
+        (row_number for row_number, row in enumerate(values, start=1) if any(map(_has_value, row))),
+        default=0,
+    )
+
+
+def _has_value(value: Any) -> bool:
+    return not _is_blank(value)
+
+
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
 
 
 def _build_update_ranges(
@@ -158,9 +262,7 @@ def _build_update_ranges(
         if row_number == previous_row + 1:
             values.append(row)
         else:
-            updates.append(
-                {"range": f"A{first_row}:{LAST_COLUMN}{previous_row}", "values": values}
-            )
+            updates.append({"range": f"A{first_row}:{LAST_COLUMN}{previous_row}", "values": values})
             first_row = row_number
             values = [row]
         previous_row = row_number
@@ -168,18 +270,18 @@ def _build_update_ranges(
     return updates
 
 
-def _descending_contiguous_ranges(row_numbers: Sequence[int]) -> list[tuple[int, int]]:
-    ordered = sorted(set(row_numbers), reverse=True)
+def _build_clear_ranges(row_numbers: Sequence[int]) -> list[str]:
+    ordered = sorted(set(row_numbers))
     if not ordered:
         return []
 
     ranges: list[tuple[int, int]] = []
     first_row = last_row = ordered[0]
     for row_number in ordered[1:]:
-        if row_number == first_row - 1:
-            first_row = row_number
+        if row_number == last_row + 1:
+            last_row = row_number
         else:
             ranges.append((first_row, last_row))
             first_row = last_row = row_number
     ranges.append((first_row, last_row))
-    return ranges
+    return [f"A{first_row}:{LAST_COLUMN}{last_row}" for first_row, last_row in ranges]

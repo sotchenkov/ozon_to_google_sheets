@@ -7,6 +7,32 @@ from dataclasses import astuple, dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+TRANSACTION_COLUMNS = (
+    "operation_date",
+    "operation_type_name",
+    "operation_id",
+    "posting_number",
+    "order_date",
+    "delivery_schema",
+    "sku",
+    "name",
+    "count",
+    "accruals_for_sale",
+    "sale_commission_percents",
+    "sale_commission",
+    "order_assembly",
+    "shipment_processing",
+    "highway",
+    "last_mile",
+    "reverse_highway",
+    "refund_processing",
+    "processing_of_cancelled_or_unclaimed_item",
+    "processing_of_unbought_item",
+    "logistics",
+    "reverse_logistics",
+    "amount",
+)
+
 
 class OzonPayloadError(ValueError):
     """Raised when an Ozon response does not match the documented schema."""
@@ -299,7 +325,7 @@ def parse_posting_accruals(value: object) -> tuple[PostingAccrual, ...]:
 
 @dataclass(slots=True)
 class TransactionRow:
-    """One Google Sheets row in the adapter's stable 23-column order."""
+    """One Google Sheets row in the order defined by ``TRANSACTION_COLUMNS``."""
 
     operation_date: str = ""
     operation_type_name: str = ""

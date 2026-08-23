@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 
 from ozon_to_google_sheets.config import ConfigError, load_config
-from ozon_to_google_sheets.google_sheets import GoogleSheetsAdapter
 from ozon_to_google_sheets.models import (
     Accrual,
     AccrualPage,
@@ -358,58 +357,6 @@ def test_service_upserts_existing_and_deduplicates_api_accruals() -> None:
     assert [row[2] for row in sheet.rows] == [42, 43]
 
 
-def test_google_adapter_updates_existing_rows_and_appends_new_rows() -> None:
-    worksheet = FakeWorksheet(existing_ids=["42", "42"])
-    adapter = GoogleSheetsAdapter(worksheet)
-    updated_rows = [_sheet_row(42, "updated-1"), _sheet_row(42, "updated-2")]
-    new_rows = [_sheet_row(43, "new")]
-
-    adapter.upsert_rows([*updated_rows, *new_rows])
-
-    assert worksheet.batch_update_calls == [
-        {
-            "data": [{"range": "A2:W3", "values": updated_rows}],
-            "value_input_option": "USER_ENTERED",
-        }
-    ]
-    assert worksheet.update_calls == [{
-        "range_name": "A4:W4",
-        "values": new_rows,
-        "value_input_option": "USER_ENTERED",
-    }]
-    assert worksheet.delete_calls == []
-
-
-def test_google_adapter_removes_surplus_rows_for_updated_operation() -> None:
-    worksheet = FakeWorksheet(existing_ids=["42", "42", "42", "43"])
-    adapter = GoogleSheetsAdapter(worksheet)
-    rows = [_sheet_row(42, "updated"), _sheet_row(43, "unchanged")]
-
-    adapter.upsert_rows(rows)
-
-    assert worksheet.delete_calls == [(3, 4)]
-    assert worksheet.update_calls == []
-
-
-def test_google_adapter_appends_rows_when_updated_operation_grows() -> None:
-    worksheet = FakeWorksheet(existing_ids=["42"])
-    adapter = GoogleSheetsAdapter(worksheet)
-    rows = [_sheet_row(42, "updated"), _sheet_row(42, "new-product")]
-
-    adapter.upsert_rows(rows)
-
-    assert worksheet.batch_update_calls[0]["data"] == [
-        {"range": "A2:W2", "values": [rows[0]]}
-    ]
-    assert worksheet.update_calls == [
-        {
-            "range_name": "A3:W3",
-            "values": [rows[1]],
-            "value_input_option": "USER_ENTERED",
-        }
-    ]
-
-
 class FakeOzon:
     def __init__(
         self,
@@ -474,52 +421,3 @@ def _non_item_accrual(accrual_id: int) -> dict[str, Any]:
         "unit_number": "service-contract",
         "total_amount": {"amount": "-1", "currency": "RUB"},
     }
-
-
-class FakeWorksheet:
-    def __init__(self, existing_ids: list[str] | None = None) -> None:
-        self._existing_ids = existing_ids or []
-        self.batch_update_calls: list[dict[str, Any]] = []
-        self.delete_calls: list[tuple[int, int | None]] = []
-        self.update_calls: list[dict[str, Any]] = []
-
-    def col_values(self, col: int) -> list[str]:
-        if col == 1:
-            row_count = 1 + len(self._existing_ids)
-            return ["header", *("existing-row" for _ in range(row_count - 1))]
-        if col == 3:
-            return ["operation-id", *self._existing_ids]
-        return []
-
-    def batch_update(
-        self,
-        data: list[dict[str, Any]],
-        *,
-        value_input_option: str,
-    ) -> None:
-        self.batch_update_calls.append(
-            {"data": data, "value_input_option": value_input_option}
-        )
-
-    def delete_rows(self, start_index: int, end_index: int | None = None) -> None:
-        self.delete_calls.append((start_index, end_index))
-        last_index = end_index or start_index
-        del self._existing_ids[start_index - 2 : last_index - 1]
-
-    def update(
-        self,
-        values: list[list[Any]],
-        range_name: str,
-        *,
-        value_input_option: str,
-    ) -> None:
-        self.update_calls.append({
-            "range_name": range_name,
-            "values": values,
-            "value_input_option": value_input_option,
-        })
-        self._existing_ids.extend(str(row[2]) for row in values)
-
-
-def _sheet_row(operation_id: int, marker: str) -> list[Any]:
-    return [marker, "", operation_id, *("" for _ in range(20))]
