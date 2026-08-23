@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,8 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
                 "OZON_TOKEN=token-from-file",
                 "OZON_CLIENT_ID=12345",
                 "GOOGLE_CREDENTIALS_PATH=credentials-for-test.json",
+                "OZON_DATE_FROM=2026-08-01",
+                "OZON_DATE_TO=2026-08-23",
             )
         ),
         encoding="utf-8",
@@ -50,6 +53,8 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
     assert config.ozon_client_id == "12345"
     assert config.google_credentials == Path("credentials-for-test.json")
     assert config.google_sheet_name == "testsheet"
+    assert config.date_from == date(2026, 8, 1)
+    assert config.date_to == date(2026, 8, 23)
 
 
 def test_config_reports_all_missing_environment_variables(tmp_path: Path) -> None:
@@ -58,8 +63,35 @@ def test_config_reports_all_missing_environment_variables(tmp_path: Path) -> Non
 
     assert str(error.value) == (
         "Missing required environment variables: "
-        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_CREDENTIALS_PATH"
+        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_CREDENTIALS_PATH, "
+        "OZON_DATE_FROM, OZON_DATE_TO"
     )
+
+
+@pytest.mark.parametrize(
+    ("date_from", "date_to", "message"),
+    (
+        ("2026/08/01", "2026-08-23", "OZON_DATE_FROM must use YYYY-MM-DD format"),
+        ("2021-12-31", "2026-08-23", "OZON_DATE_FROM must not be earlier than 2022-01-01"),
+        ("2026-08-24", "2026-08-23", "OZON_DATE_FROM must not be later than OZON_DATE_TO"),
+    ),
+)
+def test_config_validates_accrual_period(
+    tmp_path: Path,
+    date_from: str,
+    date_to: str,
+    message: str,
+) -> None:
+    environ = {
+        "OZON_TOKEN": "test-token",
+        "OZON_CLIENT_ID": "12345",
+        "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        "OZON_DATE_FROM": date_from,
+        "OZON_DATE_TO": date_to,
+    }
+
+    with pytest.raises(ConfigError, match=message):
+        load_config(tmp_path / ".env", environ=environ)
 
 
 def test_service_orchestrates_new_operations() -> None:
