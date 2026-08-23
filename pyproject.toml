@@ -24,6 +24,9 @@ dependencies = [
     "requests>=2.28.2,<3",
 ]
 
+[project.scripts]
+ozon-to-google-sheets = "ozon_to_google_sheets.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3,<10",
@@ -40,4 +43,3 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP"]
-
