@@ -9,9 +9,23 @@ from typing import Any, Protocol
 
 import gspread
 
+OPERATION_ID_COLUMN = 3
+OPERATION_ID_INDEX = OPERATION_ID_COLUMN - 1
+FIRST_DATA_ROW = 2
+LAST_COLUMN = "W"
+
 
 class Worksheet(Protocol):
     def col_values(self, col: int) -> list[str]: ...
+
+    def batch_update(
+        self,
+        data: Sequence[dict[str, Any]],
+        *,
+        value_input_option: str,
+    ) -> Any: ...
+
+    def delete_rows(self, start_index: int, end_index: int | None = None) -> Any: ...
 
     def update(
         self,
@@ -23,7 +37,7 @@ class Worksheet(Protocol):
 
 
 class GoogleSheetsAdapter:
-    """Read operation IDs and append transaction rows to one worksheet."""
+    """Upsert transaction rows in one worksheet by Ozon accrual ID."""
 
     def __init__(self, worksheet: Worksheet, *, logger: logging.Logger | None = None) -> None:
         self._worksheet = worksheet
@@ -49,28 +63,105 @@ class GoogleSheetsAdapter:
         return cls(worksheet, logger=active_logger)
 
     def get_operation_ids(self) -> list[str]:
-        return self._worksheet.col_values(3)[1:]
+        return self._worksheet.col_values(OPERATION_ID_COLUMN)[1:]
 
     def _next_row(self) -> int:
         return len(self._worksheet.col_values(1)) + 1
 
-    def append_rows(self, data: list[list[Any]], operation_ids: list[int]) -> None:
-        first_row = self._next_row()
-        try:
-            # Keep the historical range calculation; sheet logic is outside this task.
-            last_row = first_row + len(data)
-            self._worksheet.update(
-                range_name=f"A{first_row}:W{last_row}",
-                values=data,
-                value_input_option="USER_ENTERED",
-            )
-        except RuntimeError:
-            for operation_id in operation_ids:
-                self._logger.exception(
-                    "Could not send an update request to Google Sheets for operation %s",
-                    operation_id,
-                )
+    def upsert_rows(self, data: list[list[Any]]) -> None:
+        if not data:
             return
 
-        for operation_id in operation_ids:
-            self._logger.info("Operation %s added to Google Sheets", operation_id)
+        rows_by_id = _group_rows_by_operation(data)
+        existing_rows = _index_existing_rows(self.get_operation_ids())
+        replacements: list[tuple[int, list[Any]]] = []
+        rows_to_delete: list[int] = []
+        rows_to_append: list[list[Any]] = []
+
+        for operation_id, incoming_rows in rows_by_id.items():
+            positions = existing_rows.get(operation_id, [])
+            common_count = min(len(positions), len(incoming_rows))
+            replacements.extend(
+                zip(positions[:common_count], incoming_rows[:common_count], strict=True)
+            )
+            rows_to_delete.extend(positions[common_count:])
+            rows_to_append.extend(incoming_rows[common_count:])
+
+        updates = _build_update_ranges(replacements)
+        if updates:
+            self._worksheet.batch_update(updates, value_input_option="USER_ENTERED")
+
+        for first_row, last_row in _descending_contiguous_ranges(rows_to_delete):
+            self._worksheet.delete_rows(first_row, last_row)
+
+        if rows_to_append:
+            first_row = self._next_row()
+            last_row = first_row + len(rows_to_append) - 1
+            self._worksheet.update(
+                range_name=f"A{first_row}:{LAST_COLUMN}{last_row}",
+                values=rows_to_append,
+                value_input_option="USER_ENTERED",
+            )
+
+        for operation_id in rows_by_id:
+            self._logger.info("Operation %s synchronized with Google Sheets", operation_id)
+
+
+def _group_rows_by_operation(data: Sequence[list[Any]]) -> dict[str, list[list[Any]]]:
+    rows_by_id: dict[str, list[list[Any]]] = {}
+    for row in data:
+        if len(row) <= OPERATION_ID_INDEX or row[OPERATION_ID_INDEX] in (None, ""):
+            raise ValueError("Every transaction row must contain an operation ID")
+        operation_id = str(row[OPERATION_ID_INDEX]).strip()
+        rows_by_id.setdefault(operation_id, []).append(row)
+    return rows_by_id
+
+
+def _index_existing_rows(operation_ids: Sequence[str]) -> dict[str, list[int]]:
+    rows_by_id: dict[str, list[int]] = {}
+    for row_number, operation_id in enumerate(operation_ids, start=FIRST_DATA_ROW):
+        normalized = operation_id.strip()
+        if normalized:
+            rows_by_id.setdefault(normalized, []).append(row_number)
+    return rows_by_id
+
+
+def _build_update_ranges(
+    replacements: Sequence[tuple[int, list[Any]]],
+) -> list[dict[str, Any]]:
+    if not replacements:
+        return []
+
+    ordered = sorted(replacements, key=lambda item: item[0])
+    updates: list[dict[str, Any]] = []
+    first_row = previous_row = ordered[0][0]
+    values = [ordered[0][1]]
+    for row_number, row in ordered[1:]:
+        if row_number == previous_row + 1:
+            values.append(row)
+        else:
+            updates.append(
+                {"range": f"A{first_row}:{LAST_COLUMN}{previous_row}", "values": values}
+            )
+            first_row = row_number
+            values = [row]
+        previous_row = row_number
+    updates.append({"range": f"A{first_row}:{LAST_COLUMN}{previous_row}", "values": values})
+    return updates
+
+
+def _descending_contiguous_ranges(row_numbers: Sequence[int]) -> list[tuple[int, int]]:
+    ordered = sorted(set(row_numbers), reverse=True)
+    if not ordered:
+        return []
+
+    ranges: list[tuple[int, int]] = []
+    first_row = last_row = ordered[0]
+    for row_number in ordered[1:]:
+        if row_number == first_row - 1:
+            first_row = row_number
+        else:
+            ranges.append((first_row, last_row))
+            first_row = last_row = row_number
+    ranges.append((first_row, last_row))
+    return ranges

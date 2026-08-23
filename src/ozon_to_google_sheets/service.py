@@ -30,14 +30,12 @@ class OzonGateway(Protocol):
 
 
 class OperationsSheet(Protocol):
-    def get_operation_ids(self) -> list[str]: ...
-
-    def append_rows(self, data: list[list[Any]], operation_ids: list[int]) -> None: ...
+    def upsert_rows(self, data: list[list[Any]]) -> None: ...
 
 
 @dataclass(slots=True)
 class SyncService:
-    """Fetch, compare, transform, and append new Ozon accruals."""
+    """Fetch, transform, and synchronize Ozon accruals."""
 
     ozon: OzonGateway
     sheet: OperationsSheet
@@ -56,24 +54,16 @@ class SyncService:
                 self.date_to.isoformat(),
             )
             return []
-        new_accruals = self._find_new_accruals(accruals)
-        if not new_accruals:
-            active_logger.info(
-                "No new Ozon accruals from %s through %s",
-                self.date_from.isoformat(),
-                self.date_to.isoformat(),
-            )
-            return []
-
-        active_logger.info("Found %s new Ozon accruals", len(new_accruals))
+        unique_accruals = self._deduplicate_accruals(accruals)
+        active_logger.info("Synchronizing %s Ozon accruals", len(unique_accruals))
         accrual_types = (
             self.ozon.get_accrual_types(self.endpoint)
-            if any(_has_fees(accrual) for accrual in new_accruals)
+            if any(_has_fees(accrual) for accrual in unique_accruals)
             else ()
         )
         posting_numbers = [
             accrual.unit_number
-            for accrual in new_accruals
+            for accrual in unique_accruals
             if accrual.unit_number and (accrual.posting.products or accrual.item_fees)
         ]
         posting_accruals = (
@@ -82,24 +72,18 @@ class SyncService:
             else ()
         )
         rows = AccrualTransformer(logger=active_logger).transform(
-            new_accruals,
+            unique_accruals,
             accrual_types,
             posting_accruals,
         )
-        operation_ids = [accrual.accrual_id for accrual in new_accruals]
-        self.sheet.append_rows([row.as_list() for row in rows], operation_ids)
+        operation_ids = [accrual.accrual_id for accrual in unique_accruals]
+        self.sheet.upsert_rows([row.as_list() for row in rows])
         return operation_ids
 
-    def _find_new_accruals(self, accruals: Sequence[Accrual]) -> list[Accrual]:
-        existing_ids = set(self.sheet.get_operation_ids())
-        seen_ids: set[int] = set()
-        result: list[Accrual] = []
-        for accrual in sorted(accruals, key=lambda item: (item.date, item.accrual_id)):
-            if str(accrual.accrual_id) in existing_ids or accrual.accrual_id in seen_ids:
-                continue
-            seen_ids.add(accrual.accrual_id)
-            result.append(accrual)
-        return result
+    @staticmethod
+    def _deduplicate_accruals(accruals: Sequence[Accrual]) -> list[Accrual]:
+        by_id = {accrual.accrual_id: accrual for accrual in accruals}
+        return sorted(by_id.values(), key=lambda item: (item.date, item.accrual_id))
 
 
 def _has_fees(accrual: Accrual) -> bool:
