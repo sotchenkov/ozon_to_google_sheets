@@ -1,5 +1,8 @@
 secrets/
 
+# Local Codex instructions
+AGENTS.md
+
 logs/
 !logger.py
 
