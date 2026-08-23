@@ -15,8 +15,8 @@ class Worksheet(Protocol):
 
     def update(
         self,
-        range_name: str,
         values: Sequence[Sequence[Any]],
+        range_name: str,
         *,
         value_input_option: str,
     ) -> Any: ...
@@ -60,8 +60,8 @@ class GoogleSheetsAdapter:
             # Keep the historical range calculation; sheet logic is outside this task.
             last_row = first_row + len(data)
             self._worksheet.update(
-                f"A{first_row}:W{last_row}",
-                data,
+                range_name=f"A{first_row}:W{last_row}",
+                values=data,
                 value_input_option="USER_ENTERED",
             )
         except RuntimeError:

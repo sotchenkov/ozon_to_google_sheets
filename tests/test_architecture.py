@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ozon_to_google_sheets.cli import parse_config
+from ozon_to_google_sheets.google_sheets import GoogleSheetsAdapter
 from ozon_to_google_sheets.service import SyncService
 
 
@@ -85,6 +86,20 @@ def test_service_orchestrates_new_operations() -> None:
     assert sheet.rows[0][2] == 42
 
 
+def test_google_adapter_keeps_legacy_update_range() -> None:
+    worksheet = FakeWorksheet()
+    adapter = GoogleSheetsAdapter(worksheet)
+    rows = [["value"] * 23]
+
+    adapter.append_rows(rows, [42])
+
+    assert worksheet.update_call == {
+        "range_name": "A3:W4",
+        "values": rows,
+        "value_input_option": "USER_ENTERED",
+    }
+
+
 class FakeResponse:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
@@ -114,3 +129,24 @@ class FakeSheet:
     def append_rows(self, data: list[list[Any]], operation_ids: list[int]) -> None:
         self.rows = data
         self.operation_ids = operation_ids
+
+
+class FakeWorksheet:
+    def __init__(self) -> None:
+        self.update_call: dict[str, Any] = {}
+
+    def col_values(self, col: int) -> list[str]:
+        return ["header", "existing-row"] if col == 1 else []
+
+    def update(
+        self,
+        values: list[list[Any]],
+        range_name: str,
+        *,
+        value_input_option: str,
+    ) -> None:
+        self.update_call = {
+            "range_name": range_name,
+            "values": values,
+            "value_input_option": value_input_option,
+        }
