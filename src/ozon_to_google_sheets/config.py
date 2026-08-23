@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,13 +13,13 @@ from zoneinfo import ZoneInfo
 from dotenv import dotenv_values
 
 DEFAULT_OZON_ENDPOINT = "https://api-seller.ozon.ru/v1/finance/accrual/by-day"
-DEFAULT_GOOGLE_SHEET_NAME = "testsheet"
 EARLIEST_ACCRUAL_DATE = date(2022, 1, 1)
 OZON_TIME_ZONE = ZoneInfo("Europe/Moscow")
 REQUIRED_ENVIRONMENT_VARIABLES = (
     "OZON_TOKEN",
     "OZON_CLIENT_ID",
-    "GOOGLE_CREDENTIALS_PATH",
+    "GOOGLE_SPREADSHEET_ID",
+    "GOOGLE_WORKSHEET_NAME",
 )
 
 
@@ -32,10 +33,12 @@ class AppConfig:
 
     ozon_token: str
     ozon_client_id: str
-    google_credentials: Path
+    google_credentials: Path | None
+    google_credentials_info: Mapping[str, object] | None
+    google_spreadsheet_id: str
+    google_worksheet_name: str
     date_from: date
     date_to: date
-    google_sheet_name: str = DEFAULT_GOOGLE_SHEET_NAME
     ozon_endpoint: str = DEFAULT_OZON_ENDPOINT
     log_file: Path = Path("logs/logs.log")
 
@@ -49,15 +52,21 @@ def load_config(
     """Load configuration from a dotenv file and the process environment."""
 
     file_values = {
-        key: value
-        for key, value in dotenv_values(env_file).items()
-        if value is not None
+        key: value for key, value in dotenv_values(env_file).items() if value is not None
     }
     values = {**file_values, **(os.environ if environ is None else environ)}
+    credentials_path = values.get("GOOGLE_CREDENTIALS_PATH", "").strip()
+    credentials_json = values.get("GOOGLE_CREDENTIALS_JSON", "").strip()
     missing = [name for name in REQUIRED_ENVIRONMENT_VARIABLES if not values.get(name)]
+    if not credentials_path and not credentials_json:
+        missing.append("GOOGLE_CREDENTIALS_PATH or GOOGLE_CREDENTIALS_JSON")
     if missing:
         names = ", ".join(missing)
         raise ConfigError(f"Missing required environment variables: {names}")
+
+    if credentials_path and credentials_json:
+        raise ConfigError("Set exactly one of GOOGLE_CREDENTIALS_PATH or GOOGLE_CREDENTIALS_JSON")
+    credentials_info = _parse_credentials_json(credentials_json) if credentials_json else None
 
     today = current_date or datetime.now(OZON_TIME_ZONE).date()
     configured_from = values.get("OZON_DATE_FROM")
@@ -81,7 +90,10 @@ def load_config(
     return AppConfig(
         ozon_token=values["OZON_TOKEN"],
         ozon_client_id=values["OZON_CLIENT_ID"],
-        google_credentials=Path(values["GOOGLE_CREDENTIALS_PATH"]),
+        google_credentials=Path(credentials_path) if credentials_path else None,
+        google_credentials_info=credentials_info,
+        google_spreadsheet_id=values["GOOGLE_SPREADSHEET_ID"].strip(),
+        google_worksheet_name=values["GOOGLE_WORKSHEET_NAME"].strip(),
         date_from=date_from,
         date_to=date_to,
     )
@@ -92,3 +104,13 @@ def _parse_date(name: str, value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as error:
         raise ConfigError(f"{name} must use YYYY-MM-DD format") from error
+
+
+def _parse_credentials_json(value: str) -> Mapping[str, object]:
+    try:
+        credentials = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ConfigError("GOOGLE_CREDENTIALS_JSON must contain a valid JSON object") from error
+    if not isinstance(credentials, dict):
+        raise ConfigError("GOOGLE_CREDENTIALS_JSON must contain a valid JSON object")
+    return credentials

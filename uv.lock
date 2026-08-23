@@ -450,7 +450,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gspread", specifier = ">=5.7.2,<7" },
+    { name = "gspread", specifier = ">=6.2.1,<7" },
     { name = "python-dotenv", specifier = ">=1.1,<2" },
     { name = "requests", specifier = ">=2.28.2,<3" },
 ]

@@ -49,6 +49,8 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
                 "OZON_TOKEN=token-from-file",
                 "OZON_CLIENT_ID=12345",
                 "GOOGLE_CREDENTIALS_PATH=credentials-for-test.json",
+                "GOOGLE_SPREADSHEET_ID=spreadsheet-for-test",
+                "GOOGLE_WORKSHEET_NAME=Operations",
                 "OZON_DATE_FROM=2026-08-01",
                 "OZON_DATE_TO=2026-08-23",
             )
@@ -64,7 +66,9 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
     assert config.ozon_token == "token-from-environment"
     assert config.ozon_client_id == "12345"
     assert config.google_credentials == Path("credentials-for-test.json")
-    assert config.google_sheet_name == "testsheet"
+    assert config.google_credentials_info is None
+    assert config.google_spreadsheet_id == "spreadsheet-for-test"
+    assert config.google_worksheet_name == "Operations"
     assert config.date_from == date(2026, 8, 1)
     assert config.date_to == date(2026, 8, 23)
 
@@ -75,8 +79,68 @@ def test_config_reports_all_missing_environment_variables(tmp_path: Path) -> Non
 
     assert str(error.value) == (
         "Missing required environment variables: "
-        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_CREDENTIALS_PATH"
+        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_SPREADSHEET_ID, GOOGLE_WORKSHEET_NAME, "
+        "GOOGLE_CREDENTIALS_PATH or GOOGLE_CREDENTIALS_JSON"
     )
+
+
+def test_config_accepts_inline_service_account_json(tmp_path: Path) -> None:
+    config = load_config(
+        tmp_path / ".env",
+        environ={
+            "OZON_TOKEN": "test-token",
+            "OZON_CLIENT_ID": "12345",
+            "GOOGLE_CREDENTIALS_JSON": (
+                '{"type":"service_account","client_email":"test@example.invalid"}'
+            ),
+            "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
+            "GOOGLE_WORKSHEET_NAME": "Operations",
+        },
+        current_date=date(2026, 8, 23),
+    )
+
+    assert config.google_credentials is None
+    assert config.google_credentials_info == {
+        "type": "service_account",
+        "client_email": "test@example.invalid",
+    }
+
+
+@pytest.mark.parametrize(
+    ("credentials", "message"),
+    (
+        (
+            {
+                "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+                "GOOGLE_CREDENTIALS_JSON": '{"type":"service_account"}',
+            },
+            "Set exactly one of GOOGLE_CREDENTIALS_PATH or GOOGLE_CREDENTIALS_JSON",
+        ),
+        (
+            {"GOOGLE_CREDENTIALS_JSON": "not-json"},
+            "GOOGLE_CREDENTIALS_JSON must contain a valid JSON object",
+        ),
+    ),
+)
+def test_config_rejects_ambiguous_or_invalid_google_credentials(
+    tmp_path: Path,
+    credentials: dict[str, str],
+    message: str,
+) -> None:
+    environ = {
+        "OZON_TOKEN": "test-token",
+        "OZON_CLIENT_ID": "12345",
+        "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
+        "GOOGLE_WORKSHEET_NAME": "Operations",
+        **credentials,
+    }
+
+    with pytest.raises(ConfigError, match=message):
+        load_config(
+            tmp_path / ".env",
+            environ=environ,
+            current_date=date(2026, 8, 23),
+        )
 
 
 @pytest.mark.parametrize(
@@ -97,6 +161,8 @@ def test_config_calculates_daily_sync_period(
         "OZON_TOKEN": "test-token",
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
+        "GOOGLE_WORKSHEET_NAME": "Operations",
         **dates,
     }
 
@@ -128,6 +194,8 @@ def test_config_validates_accrual_period(
         "OZON_TOKEN": "test-token",
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
+        "GOOGLE_WORKSHEET_NAME": "Operations",
         "OZON_DATE_FROM": date_from,
         "OZON_DATE_TO": date_to,
     }
@@ -145,6 +213,8 @@ def test_config_rejects_future_period(tmp_path: Path) -> None:
         "OZON_TOKEN": "test-token",
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
+        "GOOGLE_WORKSHEET_NAME": "Operations",
         "OZON_DATE_FROM": "2026-08-24",
         "OZON_DATE_TO": "2026-08-25",
     }

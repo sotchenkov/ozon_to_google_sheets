@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -13,6 +13,10 @@ OPERATION_ID_COLUMN = 3
 OPERATION_ID_INDEX = OPERATION_ID_COLUMN - 1
 FIRST_DATA_ROW = 2
 LAST_COLUMN = "W"
+
+
+class GoogleSheetsError(RuntimeError):
+    """Raised when Google Sheets cannot be accessed or updated."""
 
 
 class Worksheet(Protocol):
@@ -46,18 +50,32 @@ class GoogleSheetsAdapter:
     @classmethod
     def connect(
         cls,
-        credentials: Path,
-        sheet_name: str,
         *,
+        credentials_path: Path | None,
+        credentials_info: Mapping[str, object] | None,
+        spreadsheet_id: str,
+        worksheet_name: str,
         logger: logging.Logger | None = None,
     ) -> GoogleSheetsAdapter:
         active_logger = logger or logging.getLogger(__name__)
+        if (credentials_path is None) == (credentials_info is None):
+            raise GoogleSheetsError(
+                "Exactly one Google service-account credential source is required"
+            )
         try:
-            client = gspread.service_account(str(credentials))
-            worksheet = client.open(sheet_name).sheet1
-        except ConnectionError:
-            active_logger.exception("Connection error to Google Sheets")
-            raise
+            client = (
+                gspread.service_account_from_dict(credentials_info)
+                if credentials_info is not None
+                else gspread.service_account(filename=str(credentials_path))
+            )
+            worksheet = client.open_by_key(spreadsheet_id).worksheet(worksheet_name)
+        except Exception as error:
+            message = (
+                "Could not connect to Google spreadsheet "
+                f"{spreadsheet_id!r}, worksheet {worksheet_name!r}"
+            )
+            active_logger.exception(message)
+            raise GoogleSheetsError(message) from error
 
         active_logger.info("Success connecting to Google Sheets")
         return cls(worksheet, logger=active_logger)
