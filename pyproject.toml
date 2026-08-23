@@ -21,6 +21,7 @@ classifiers = [
 ]
 dependencies = [
     "gspread>=5.7.2,<7",
+    "python-dotenv>=1.1,<2",
     "requests>=2.28.2,<3",
 ]
 

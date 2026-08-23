@@ -1,33 +1,12 @@
-"""Command-line interface and composition root."""
+"""Local entry point and application composition root."""
 
 from __future__ import annotations
 
-import argparse
-from collections.abc import Sequence
-from pathlib import Path
-
-from .config import AppConfig
+from .config import AppConfig, load_config
 from .google_sheets import GoogleSheetsAdapter
 from .logging import configure_file_logging
 from .ozon import OzonClient
 from .service import SyncService
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ozon_token", type=str, required=True)
-    parser.add_argument("--ozon_id", type=int, required=True)
-    parser.add_argument("--g_cred", type=str, required=True)
-    return parser
-
-
-def parse_config(argv: Sequence[str] | None = None) -> AppConfig:
-    args = build_parser().parse_args(argv)
-    return AppConfig(
-        ozon_token=args.ozon_token,
-        ozon_client_id=str(args.ozon_id),
-        google_credentials=Path(args.g_cred),
-    )
 
 
 def run(config: AppConfig) -> list[int]:
@@ -52,6 +31,6 @@ def run(config: AppConfig) -> list[int]:
         logger.info("The application has shut down")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    run(parse_config(argv))
+def main() -> int:
+    run(load_config())
     return 0

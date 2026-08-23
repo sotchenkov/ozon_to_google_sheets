@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ozon_to_google_sheets.cli import parse_config
+from ozon_to_google_sheets.config import load_config
 from ozon_to_google_sheets.google_sheets import GoogleSheetsAdapter
 from ozon_to_google_sheets.service import SyncService
 
@@ -30,19 +30,21 @@ def test_package_imports_have_no_filesystem_side_effects(tmp_path: Path) -> None
     assert not (tmp_path / "logs").exists()
 
 
-def test_cli_preserves_required_arguments() -> None:
-    config = parse_config(
-        [
-            "--ozon_token",
-            "token-for-test",
-            "--ozon_id",
-            "12345",
-            "--g_cred",
-            "credentials-for-test.json",
-        ]
+def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            (
+                "OZON_TOKEN=token-from-file",
+                "OZON_CLIENT_ID=12345",
+                "GOOGLE_CREDENTIALS_PATH=credentials-for-test.json",
+            )
+        ),
+        encoding="utf-8",
     )
+    config = load_config(env_file, environ={"OZON_TOKEN": "token-from-environment"})
 
-    assert config.ozon_token == "token-for-test"
+    assert config.ozon_token == "token-from-environment"
     assert config.ozon_client_id == "12345"
     assert config.google_credentials == Path("credentials-for-test.json")
     assert config.google_sheet_name == "testsheet"
