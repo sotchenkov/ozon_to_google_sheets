@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ozon_to_google_sheets.config import load_config
+import pytest
+
+from ozon_to_google_sheets.config import ConfigError, load_config
 from ozon_to_google_sheets.google_sheets import GoogleSheetsAdapter
 from ozon_to_google_sheets.service import SyncService
 
@@ -48,6 +50,16 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
     assert config.ozon_client_id == "12345"
     assert config.google_credentials == Path("credentials-for-test.json")
     assert config.google_sheet_name == "testsheet"
+
+
+def test_config_reports_all_missing_environment_variables(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError) as error:
+        load_config(tmp_path / ".env", environ={})
+
+    assert str(error.value) == (
+        "Missing required environment variables: "
+        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_CREDENTIALS_PATH"
+    )
 
 
 def test_service_orchestrates_new_operations() -> None:
