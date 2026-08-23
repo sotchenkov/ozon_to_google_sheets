@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+from decimal import Decimal
+
+import pytest
+
+from ozon_to_google_sheets.models import (
+    AccrualPage,
+    OzonPayloadError,
+    TransactionRow,
+    parse_accrual_types,
+    parse_posting_accruals,
+)
+
+
+def test_accrual_page_parses_products_fees_and_container_fees() -> None:
+    page = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 42,
+                    "accrued_category": "POSTING",
+                    "date": "2026-08-23",
+                    "unit_number": "posting-1",
+                    "total_amount": {"amount": "80.50", "currency": "RUB"},
+                    "posting": {
+                        "delivery_schema": "FBO",
+                        "delivery_speed": 1,
+                        "products": [
+                            {
+                                "sku": 1001,
+                                "commission": {
+                                    "commission": {"amount": "-12.25", "currency": "RUB"},
+                                    "commission_ratio": "12.25",
+                                    "sale_amount": {"amount": "100.00", "currency": "RUB"},
+                                },
+                                "delivery": {
+                                    "services": [
+                                        {
+                                            "type_id": 7,
+                                            "accrued": {"amount": "-7.25", "currency": "RUB"},
+                                        }
+                                    ],
+                                    "total_accrued": {
+                                        "amount": "-7.25",
+                                        "currency": "RUB",
+                                    },
+                                },
+                            }
+                        ],
+                    },
+                    "item_fees": {
+                        "fees": [
+                            {
+                                "sku": 1001,
+                                "fees": [
+                                    {
+                                        "type_id": 8,
+                                        "accrued": {"amount": "-1.00", "currency": "RUB"},
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "container_fees": {
+                        "fees": [
+                            {
+                                "type_id": 9,
+                                "accrued": {"amount": "-0.50", "currency": "RUB"},
+                            }
+                        ]
+                    },
+                }
+            ],
+            "last_id": "next-page",
+        }
+    )
+
+    accrual = page.accruals[0]
+    assert accrual.accrual_id == 42
+    assert accrual.total_amount.amount == Decimal("80.50")
+    assert accrual.posting.products[0].sku == 1001
+    assert accrual.posting.products[0].delivery.services[0].type_id == 7
+    assert accrual.item_fees[0].fees[0].accrued.amount == Decimal("-1.00")
+    assert accrual.container_fees[0].accrued.amount == Decimal("-0.50")
+    assert page.last_id == "next-page"
+
+
+def test_accrual_page_accepts_empty_response() -> None:
+    assert AccrualPage.from_api({"accruals": [], "last_id": ""}).accruals == ()
+
+
+def test_accrual_page_reports_field_path_for_invalid_payload() -> None:
+    with pytest.raises(
+        OzonPayloadError,
+        match=r"response\.accruals\[0\]\.accrual_id must be an integer",
+    ):
+        AccrualPage.from_api(
+            {
+                "accruals": [
+                    {
+                        "accrual_id": None,
+                        "date": "2026-08-23",
+                        "total_amount": {"amount": "0", "currency": "RUB"},
+                    }
+                ],
+                "last_id": "",
+            }
+        )
+
+
+def test_type_and_posting_models_parse_empty_and_populated_responses() -> None:
+    types = parse_accrual_types(
+        {
+            "accrual_types": [
+                {"id": 7, "name": "MarketplaceServiceItemDelivToCustomer", "description": ""}
+            ]
+        }
+    )
+    postings = parse_posting_accruals(
+        {
+            "posting_accruals": [
+                {
+                    "posting_number": "posting-1",
+                    "accruals": [
+                        {
+                            "sku": 1001,
+                            "quantity": 3,
+                            "type_id": 7,
+                            "accrual_date": "2026-08-23",
+                            "accrued": {"amount": "-7.25", "currency": "RUB"},
+                            "seller_price": {"amount": "100", "currency": "RUB"},
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert types[0].type_id == 7
+    assert postings[0].quantity == 3
+    assert parse_accrual_types({"accrual_types": []}) == ()
+    assert parse_posting_accruals({"posting_accruals": []}) == ()
+
+
+def test_transaction_row_converts_exact_money_for_sheet_transport() -> None:
+    row = TransactionRow(accruals_for_sale=Decimal("10.20"), amount=Decimal("9.10"))
+
+    values = row.as_list()
+
+    assert len(values) == 23
+    assert values[9] == 10.2
+    assert values[22] == 9.1
