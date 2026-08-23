@@ -25,6 +25,8 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
                                 2002,
                                 "60.00",
                                 "-6.00",
+                                "66.00",
+                                "-7.00",
                                 "10",
                                 [(2, "-1.50"), (2, "-0.50")],
                             ),
@@ -32,6 +34,8 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
                                 1001,
                                 "100.00",
                                 "-10.00",
+                                "110.00",
+                                "-11.00",
                                 "10",
                                 [(1, "-2.00"), (2, "-3.00"), (3, "-4.00"), (99, "-9")],
                             ),
@@ -46,10 +50,10 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
     types = parse_accrual_types(
         {
             "accrual_types": [
-                _type(1, "MarketplaceServiceItemFulfillment"),
-                _type(2, "MarketplaceServiceItemDropoffSC"),
-                _type(3, "MarketplaceServiceItemDelivToCustomer"),
-                _type(4, "MarketplaceServiceItemReturnFlowLogistic"),
+                _type(1, "Fulfillment"),
+                _type(2, "DropoffSC"),
+                _type(3, "LastMileCourier"),
+                _type(4, "ReturnFlowLogistic"),
                 _type(99, "FutureOzonService"),
             ]
         }
@@ -70,8 +74,8 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
     assert [row.sku for row in rows] == [1001, 2002]
     assert [row.count for row in rows] == [2, 3]
     assert [row.amount for row in rows] == [Decimal("150.00"), Decimal("0")]
-    assert rows[0].accruals_for_sale == Decimal("100.00")
-    assert rows[0].sale_commission == Decimal("-10.00")
+    assert rows[0].accruals_for_sale == Decimal("110.00")
+    assert rows[0].sale_commission == Decimal("-11.00")
     assert rows[0].sale_commission_percents == "10%"
     assert rows[0].order_assembly == Decimal("-2.00")
     assert rows[0].shipment_processing == Decimal("-3.00")
@@ -110,7 +114,7 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
         }
     )
     types = parse_accrual_types(
-        {"accrual_types": [_type(5, "MarketplaceServiceItemReturnFlowTrans")]}
+        {"accrual_types": [_type(5, "ReturnFlowTrans")]}
     )
 
     rows = AccrualTransformer().transform(page.accruals, types, ())
@@ -141,6 +145,8 @@ def _product(
     sku: int,
     sale_amount: str,
     commission: str,
+    seller_price: str,
+    sale_commission: str,
     ratio: str,
     services: list[tuple[int, str]],
 ) -> dict[str, Any]:
@@ -150,6 +156,8 @@ def _product(
             "commission": _money(commission),
             "commission_ratio": ratio,
             "sale_amount": _money(sale_amount),
+            "sale_commission": _money(sale_commission),
+            "seller_price": _money(seller_price),
         },
         "delivery": {
             "services": [_fee(type_id, amount) for type_id, amount in services],

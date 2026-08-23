@@ -15,6 +15,22 @@ from .models import (
 )
 
 SERVICE_FIELDS: Mapping[str, str] = {
+    # Current /v1/finance/accrual/types names.
+    "Fulfillment": "order_assembly",
+    "DropoffPVZ": "shipment_processing",
+    "DropoffSC": "shipment_processing",
+    "DirectFlowTrans": "highway",
+    "LastMileCourier": "last_mile",
+    "DeliveryToHandoverPlaceByOzon": "last_mile",
+    "ReturnFlowTrans": "reverse_highway",
+    "ReturnAfterDelivToCustomer": "refund_processing",
+    "PickUpPointReturnAcceptance": "refund_processing",
+    "ReturnNotDelivToCustomer": "processing_of_cancelled_or_unclaimed_item",
+    "Cancellation": "processing_of_cancelled_or_unclaimed_item",
+    "ReturnPartGoodsCustomer": "processing_of_unbought_item",
+    "Logistic": "logistics",
+    "ReturnFlowLogistic": "reverse_logistics",
+    # Legacy aliases retained for accounts returning the former system names.
     "MarketplaceServiceItemFulfillment": "order_assembly",
     "MarketplaceServiceItemDropoffPVZ": "shipment_processing",
     "MarketplaceServiceItemDropoffSC": "shipment_processing",
@@ -108,8 +124,8 @@ class AccrualTransformer:
     @staticmethod
     def _apply_commission(row: TransactionRow, product: PostingProduct) -> None:
         commission = product.commission
-        row.accruals_for_sale = commission.sale_amount.amount
-        row.sale_commission = commission.commission.amount
+        row.accruals_for_sale = commission.seller_price.amount
+        row.sale_commission = commission.sale_commission.amount
         ratio = commission.commission_ratio.strip()
         if ratio:
             row.sale_commission_percents = ratio if ratio.endswith("%") else f"{ratio}%"
