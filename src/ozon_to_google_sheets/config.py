@@ -19,7 +19,7 @@ REQUIRED_ENVIRONMENT_VARIABLES = (
     "OZON_TOKEN",
     "OZON_CLIENT_ID",
     "GOOGLE_SPREADSHEET_ID",
-    "GOOGLE_WORKSHEET_NAME",
+    "GOOGLE_WORKSHEET_ID",
 )
 
 
@@ -36,7 +36,7 @@ class AppConfig:
     google_credentials: Path | None
     google_credentials_info: Mapping[str, object] | None
     google_spreadsheet_id: str
-    google_worksheet_name: str
+    google_worksheet_id: int
     date_from: date
     date_to: date
     ozon_endpoint: str = DEFAULT_OZON_ENDPOINT
@@ -93,7 +93,7 @@ def load_config(
         google_credentials=Path(credentials_path) if credentials_path else None,
         google_credentials_info=credentials_info,
         google_spreadsheet_id=values["GOOGLE_SPREADSHEET_ID"].strip(),
-        google_worksheet_name=values["GOOGLE_WORKSHEET_NAME"].strip(),
+        google_worksheet_id=_parse_worksheet_id(values["GOOGLE_WORKSHEET_ID"]),
         date_from=date_from,
         date_to=date_to,
     )
@@ -104,6 +104,16 @@ def _parse_date(name: str, value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as error:
         raise ConfigError(f"{name} must use YYYY-MM-DD format") from error
+
+
+def _parse_worksheet_id(value: str) -> int:
+    try:
+        worksheet_id = int(value)
+    except ValueError as error:
+        raise ConfigError("GOOGLE_WORKSHEET_ID must be a non-negative integer") from error
+    if worksheet_id < 0:
+        raise ConfigError("GOOGLE_WORKSHEET_ID must be a non-negative integer")
+    return worksheet_id
 
 
 def _parse_credentials_json(value: str) -> Mapping[str, object]:

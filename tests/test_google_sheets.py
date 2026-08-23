@@ -44,7 +44,7 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
         credentials_path=credentials_path,
         credentials_info=credentials_info,
         spreadsheet_id="spreadsheet-for-test",
-        worksheet_name="Operations",
+        worksheet_id=0,
     )
 
     expected_credentials: object = (
@@ -52,7 +52,7 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
     )
     assert auth_calls == [(credential_source, expected_credentials)]
     assert client.spreadsheet_ids == ["spreadsheet-for-test"]
-    assert client.worksheet_names == ["Operations"]
+    assert client.worksheet_ids == [0]
     assert adapter.get_operation_ids() == []
 
 
@@ -69,11 +69,11 @@ def test_connect_wraps_google_errors_without_credentials(
             credentials_path=Path("credentials-for-test.json"),
             credentials_info=None,
             spreadsheet_id="spreadsheet-for-test",
-            worksheet_name="Operations",
+            worksheet_id=123456,
         )
 
     assert str(error.value) == (
-        "Could not connect to Google spreadsheet 'spreadsheet-for-test', worksheet 'Operations'"
+        "Could not connect to Google spreadsheet 'spreadsheet-for-test', worksheet ID 123456"
     )
     assert "credentials-for-test.json" not in str(error.value)
 
@@ -248,14 +248,14 @@ class FakeClient:
     def __init__(self, worksheet: FakeWorksheet) -> None:
         self._worksheet = worksheet
         self.spreadsheet_ids: list[str] = []
-        self.worksheet_names: list[str] = []
+        self.worksheet_ids: list[int] = []
 
     def open_by_key(self, spreadsheet_id: str) -> FakeClient:
         self.spreadsheet_ids.append(spreadsheet_id)
         return self
 
-    def worksheet(self, worksheet_name: str) -> FakeWorksheet:
-        self.worksheet_names.append(worksheet_name)
+    def get_worksheet_by_id(self, worksheet_id: int) -> FakeWorksheet:
+        self.worksheet_ids.append(worksheet_id)
         return self._worksheet
 
 

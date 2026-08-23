@@ -61,7 +61,7 @@ class GoogleSheetsAdapter:
         credentials_path: Path | None,
         credentials_info: Mapping[str, object] | None,
         spreadsheet_id: str,
-        worksheet_name: str,
+        worksheet_id: int,
         logger: logging.Logger | None = None,
     ) -> GoogleSheetsAdapter:
         active_logger = logger or logging.getLogger(__name__)
@@ -75,11 +75,11 @@ class GoogleSheetsAdapter:
                 if credentials_info is not None
                 else gspread.service_account(filename=str(credentials_path))
             )
-            worksheet = client.open_by_key(spreadsheet_id).worksheet(worksheet_name)
+            worksheet = client.open_by_key(spreadsheet_id).get_worksheet_by_id(worksheet_id)
         except Exception as error:
             message = (
                 "Could not connect to Google spreadsheet "
-                f"{spreadsheet_id!r}, worksheet {worksheet_name!r}"
+                f"{spreadsheet_id!r}, worksheet ID {worksheet_id}"
             )
             active_logger.exception(message)
             raise GoogleSheetsError(message) from error

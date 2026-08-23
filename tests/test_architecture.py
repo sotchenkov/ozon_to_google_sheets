@@ -49,7 +49,7 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
                 "OZON_CLIENT_ID=12345",
                 "GOOGLE_CREDENTIALS_PATH=credentials-for-test.json",
                 "GOOGLE_SPREADSHEET_ID=spreadsheet-for-test",
-                "GOOGLE_WORKSHEET_NAME=Operations",
+                "GOOGLE_WORKSHEET_ID=0",
                 "OZON_DATE_FROM=2026-08-01",
                 "OZON_DATE_TO=2026-08-23",
             )
@@ -67,7 +67,7 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
     assert config.google_credentials == Path("credentials-for-test.json")
     assert config.google_credentials_info is None
     assert config.google_spreadsheet_id == "spreadsheet-for-test"
-    assert config.google_worksheet_name == "Operations"
+    assert config.google_worksheet_id == 0
     assert config.date_from == date(2026, 8, 1)
     assert config.date_to == date(2026, 8, 23)
 
@@ -78,7 +78,7 @@ def test_config_reports_all_missing_environment_variables(tmp_path: Path) -> Non
 
     assert str(error.value) == (
         "Missing required environment variables: "
-        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_SPREADSHEET_ID, GOOGLE_WORKSHEET_NAME, "
+        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_SPREADSHEET_ID, GOOGLE_WORKSHEET_ID, "
         "GOOGLE_CREDENTIALS_PATH or GOOGLE_CREDENTIALS_JSON"
     )
 
@@ -93,7 +93,7 @@ def test_config_accepts_inline_service_account_json(tmp_path: Path) -> None:
                 '{"type":"service_account","client_email":"test@example.invalid"}'
             ),
             "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
-            "GOOGLE_WORKSHEET_NAME": "Operations",
+            "GOOGLE_WORKSHEET_ID": "123456",
         },
         current_date=date(2026, 8, 23),
     )
@@ -103,6 +103,31 @@ def test_config_accepts_inline_service_account_json(tmp_path: Path) -> None:
         "type": "service_account",
         "client_email": "test@example.invalid",
     }
+    assert config.google_worksheet_id == 123456
+
+
+@pytest.mark.parametrize("worksheet_id", ("Operations", "-1"))
+def test_config_rejects_invalid_worksheet_id(
+    tmp_path: Path,
+    worksheet_id: str,
+) -> None:
+    environ = {
+        "OZON_TOKEN": "test-token",
+        "OZON_CLIENT_ID": "12345",
+        "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
+        "GOOGLE_WORKSHEET_ID": worksheet_id,
+    }
+
+    with pytest.raises(
+        ConfigError,
+        match="GOOGLE_WORKSHEET_ID must be a non-negative integer",
+    ):
+        load_config(
+            tmp_path / ".env",
+            environ=environ,
+            current_date=date(2026, 8, 23),
+        )
 
 
 @pytest.mark.parametrize(
@@ -130,7 +155,7 @@ def test_config_rejects_ambiguous_or_invalid_google_credentials(
         "OZON_TOKEN": "test-token",
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
-        "GOOGLE_WORKSHEET_NAME": "Operations",
+        "GOOGLE_WORKSHEET_ID": "0",
         **credentials,
     }
 
@@ -161,7 +186,7 @@ def test_config_calculates_daily_sync_period(
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
         "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
-        "GOOGLE_WORKSHEET_NAME": "Operations",
+        "GOOGLE_WORKSHEET_ID": "0",
         **dates,
     }
 
@@ -194,7 +219,7 @@ def test_config_validates_accrual_period(
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
         "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
-        "GOOGLE_WORKSHEET_NAME": "Operations",
+        "GOOGLE_WORKSHEET_ID": "0",
         "OZON_DATE_FROM": date_from,
         "OZON_DATE_TO": date_to,
     }
@@ -213,7 +238,7 @@ def test_config_rejects_future_period(tmp_path: Path) -> None:
         "OZON_CLIENT_ID": "12345",
         "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
         "GOOGLE_SPREADSHEET_ID": "spreadsheet-for-test",
-        "GOOGLE_WORKSHEET_NAME": "Operations",
+        "GOOGLE_WORKSHEET_ID": "0",
         "OZON_DATE_FROM": "2026-08-24",
         "OZON_DATE_TO": "2026-08-25",
     }

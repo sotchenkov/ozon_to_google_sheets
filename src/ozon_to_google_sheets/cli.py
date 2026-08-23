@@ -18,7 +18,7 @@ def run(config: AppConfig) -> list[int]:
             credentials_path=config.google_credentials,
             credentials_info=config.google_credentials_info,
             spreadsheet_id=config.google_spreadsheet_id,
-            worksheet_name=config.google_worksheet_name,
+            worksheet_id=config.google_worksheet_id,
             logger=logger,
         )
         service = SyncService(
