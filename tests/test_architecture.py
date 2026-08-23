@@ -55,7 +55,11 @@ def test_config_loads_dotenv_with_environment_precedence(tmp_path: Path) -> None
         ),
         encoding="utf-8",
     )
-    config = load_config(env_file, environ={"OZON_TOKEN": "token-from-environment"})
+    config = load_config(
+        env_file,
+        environ={"OZON_TOKEN": "token-from-environment"},
+        current_date=date(2026, 8, 23),
+    )
 
     assert config.ozon_token == "token-from-environment"
     assert config.ozon_client_id == "12345"
@@ -71,9 +75,39 @@ def test_config_reports_all_missing_environment_variables(tmp_path: Path) -> Non
 
     assert str(error.value) == (
         "Missing required environment variables: "
-        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_CREDENTIALS_PATH, "
-        "OZON_DATE_FROM, OZON_DATE_TO"
+        "OZON_TOKEN, OZON_CLIENT_ID, GOOGLE_CREDENTIALS_PATH"
     )
+
+
+@pytest.mark.parametrize(
+    ("dates", "expected_from", "expected_to"),
+    (
+        ({}, date(2026, 8, 22), date(2026, 8, 23)),
+        ({"OZON_DATE_FROM": "2026-08-20"}, date(2026, 8, 20), date(2026, 8, 23)),
+        ({"OZON_DATE_TO": "2026-08-20"}, date(2026, 8, 20), date(2026, 8, 20)),
+    ),
+)
+def test_config_calculates_daily_sync_period(
+    tmp_path: Path,
+    dates: dict[str, str],
+    expected_from: date,
+    expected_to: date,
+) -> None:
+    environ = {
+        "OZON_TOKEN": "test-token",
+        "OZON_CLIENT_ID": "12345",
+        "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        **dates,
+    }
+
+    config = load_config(
+        tmp_path / ".env",
+        environ=environ,
+        current_date=date(2026, 8, 23),
+    )
+
+    assert config.date_from == expected_from
+    assert config.date_to == expected_to
 
 
 @pytest.mark.parametrize(
@@ -99,7 +133,28 @@ def test_config_validates_accrual_period(
     }
 
     with pytest.raises(ConfigError, match=message):
-        load_config(tmp_path / ".env", environ=environ)
+        load_config(
+            tmp_path / ".env",
+            environ=environ,
+            current_date=date(2026, 8, 23),
+        )
+
+
+def test_config_rejects_future_period(tmp_path: Path) -> None:
+    environ = {
+        "OZON_TOKEN": "test-token",
+        "OZON_CLIENT_ID": "12345",
+        "GOOGLE_CREDENTIALS_PATH": "credentials-for-test.json",
+        "OZON_DATE_FROM": "2026-08-24",
+        "OZON_DATE_TO": "2026-08-25",
+    }
+
+    with pytest.raises(ConfigError, match="OZON_DATE_TO must not be later than today"):
+        load_config(
+            tmp_path / ".env",
+            environ=environ,
+            current_date=date(2026, 8, 23),
+        )
 
 
 def test_service_orchestrates_new_operations() -> None:

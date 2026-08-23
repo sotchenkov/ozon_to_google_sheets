@@ -5,20 +5,20 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import dotenv_values
 
 DEFAULT_OZON_ENDPOINT = "https://api-seller.ozon.ru/v1/finance/accrual/by-day"
 DEFAULT_GOOGLE_SHEET_NAME = "testsheet"
 EARLIEST_ACCRUAL_DATE = date(2022, 1, 1)
+OZON_TIME_ZONE = ZoneInfo("Europe/Moscow")
 REQUIRED_ENVIRONMENT_VARIABLES = (
     "OZON_TOKEN",
     "OZON_CLIENT_ID",
     "GOOGLE_CREDENTIALS_PATH",
-    "OZON_DATE_FROM",
-    "OZON_DATE_TO",
 )
 
 
@@ -44,6 +44,7 @@ def load_config(
     env_file: Path = Path(".env"),
     *,
     environ: Mapping[str, str] | None = None,
+    current_date: date | None = None,
 ) -> AppConfig:
     """Load configuration from a dotenv file and the process environment."""
 
@@ -58,8 +59,20 @@ def load_config(
         names = ", ".join(missing)
         raise ConfigError(f"Missing required environment variables: {names}")
 
-    date_from = _parse_date("OZON_DATE_FROM", values["OZON_DATE_FROM"])
-    date_to = _parse_date("OZON_DATE_TO", values["OZON_DATE_TO"])
+    today = current_date or datetime.now(OZON_TIME_ZONE).date()
+    configured_from = values.get("OZON_DATE_FROM")
+    configured_to = values.get("OZON_DATE_TO")
+    date_to = _parse_date("OZON_DATE_TO", configured_to) if configured_to else today
+    if date_to > today:
+        raise ConfigError("OZON_DATE_TO must not be later than today")
+
+    if configured_from:
+        date_from = _parse_date("OZON_DATE_FROM", configured_from)
+    elif configured_to:
+        date_from = date_to
+    else:
+        date_from = max(EARLIEST_ACCRUAL_DATE, today - timedelta(days=1))
+
     if date_from < EARLIEST_ACCRUAL_DATE:
         raise ConfigError("OZON_DATE_FROM must not be earlier than 2022-01-01")
     if date_from > date_to:
