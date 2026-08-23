@@ -2,6 +2,7 @@ secrets/
 
 # Local Codex instructions
 AGENTS.md
+.agents/
 
 logs/
 
