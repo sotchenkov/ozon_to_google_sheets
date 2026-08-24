@@ -332,9 +332,9 @@ def test_service_orchestrates_new_operations() -> None:
         ("types", endpoint),
         ("postings", endpoint, ("posting-for-test",)),
     ]
-    assert sheet.operation_ids == [42]
+    assert sheet.operation_references == ["posting-for-test"]
     assert len(sheet.rows[0]) == 23
-    assert sheet.rows[0][2] == 42
+    assert sheet.rows[0][2] == "posting-for-test"
     assert sheet.rows[0][8] == 2
 
 
@@ -365,9 +365,9 @@ def test_service_upserts_existing_and_deduplicates_api_accruals() -> None:
 
     assert service.run() == [42, 43]
     assert ozon.calls == [("accruals", service.endpoint, service.date_from, service.date_to)]
-    assert sheet.operation_ids == [42, 43]
+    assert sheet.operation_references == ["service-contract-42", "service-contract-43"]
     assert len(sheet.rows) == 2
-    assert [row[2] for row in sheet.rows] == [42, 43]
+    assert [row[2] for row in sheet.rows] == ["service-contract-42", "service-contract-43"]
 
 
 def _service(ozon: FakeOzonGateway, sheet: FakeOperationsSheet) -> SyncService:
@@ -385,6 +385,6 @@ def _non_item_accrual(accrual_id: int) -> dict[str, Any]:
         "accrual_id": accrual_id,
         "accrued_category": "NON_ITEM",
         "date": "2026-08-23",
-        "unit_number": "service-contract",
+        "unit_number": f"service-contract-{accrual_id}",
         "total_amount": {"amount": "-1", "currency": "RUB"},
     }

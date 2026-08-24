@@ -7,6 +7,7 @@ import pytest
 
 from ozon_to_google_sheets.models import (
     TRANSACTION_COLUMNS,
+    TRANSACTION_SHEET_HEADER,
     AccrualPage,
     Money,
     OzonPayloadError,
@@ -153,7 +154,41 @@ def test_transaction_row_converts_exact_money_for_sheet_transport() -> None:
 
 
 def test_transaction_columns_match_the_row_model() -> None:
-    assert tuple(field.name for field in fields(TransactionRow)) == TRANSACTION_COLUMNS
+    model_fields = tuple(field.name for field in fields(TransactionRow))
+
+    assert len(TRANSACTION_COLUMNS) == 23
+    assert all(column in model_fields for column in TRANSACTION_COLUMNS)
+    assert "operation_id" in model_fields
+    assert "operation_id" not in TRANSACTION_COLUMNS
+
+
+def test_transaction_sheet_header_is_the_exact_russian_user_schema() -> None:
+    assert TRANSACTION_SHEET_HEADER == (
+        "Дата начисления",
+        "Тип начисления",
+        "Номер отправления или идентификатор услуги",
+        "Дата принятия заказа в обработку или оказания услуги",
+        "Склад отгрузки",
+        "SKU",
+        "Артикул",
+        "Название товара или услуги",
+        "Количество",
+        "За продажу или возврат до вычета комиссий и услуг",
+        "Ставка комиссии",
+        "Комиссия за продажу",
+        "Сборка заказа",
+        "Обработка отправления",
+        "Магистраль",
+        "Последняя миля",
+        "Обратная магистраль",
+        "Обработка возврата",
+        "Обработка отменённого или невостребованного товара",
+        "Обработка невыкупленного товара",
+        "Логистика",
+        "Обратная логистика",
+        "Итого",
+    )
+    assert len(TRANSACTION_SHEET_HEADER) == len(TRANSACTION_COLUMNS) == 23
 
 
 @pytest.mark.parametrize("amount", (True, [], "not-a-decimal"))

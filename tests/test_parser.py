@@ -123,7 +123,7 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
     assert rows[0].amount == Decimal("-12.00")
     assert rows[1].amount == Decimal("0")
     assert rows[2].amount == Decimal("0")
-    assert rows[2].as_list()[2] == 43
+    assert rows[2].as_list()[2] == "advertising-contract"
 
 
 def _money(amount: str) -> dict[str, str]:

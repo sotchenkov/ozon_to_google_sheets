@@ -29,7 +29,7 @@ def test_service_skips_type_catalogue_for_fee_free_product(
     assert [call[0] for call in ozon.calls] == ["accruals", "postings"]
     assert ozon.calls[1] == ("postings", ENDPOINT, ("posting-test-0001",))
     assert sheet.upsert_calls == 1
-    assert sheet.rows[0][2] == 910001
+    assert sheet.rows[0][2] == "posting-test-0001"
 
 
 def test_service_fetches_catalogue_and_postings_only_when_required(

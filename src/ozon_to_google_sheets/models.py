@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import astuple, dataclass
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-TRANSACTION_COLUMNS = (
+LEGACY_TRANSACTION_COLUMNS = (
     "operation_date",
     "operation_type_name",
     "operation_id",
@@ -32,6 +32,40 @@ TRANSACTION_COLUMNS = (
     "reverse_logistics",
     "amount",
 )
+
+TRANSACTION_SHEET_SCHEMA = (
+    ("operation_date", "Дата начисления"),
+    ("operation_type_name", "Тип начисления"),
+    ("posting_number", "Номер отправления или идентификатор услуги"),
+    ("order_date", "Дата принятия заказа в обработку или оказания услуги"),
+    ("warehouse_name", "Склад отгрузки"),
+    ("sku", "SKU"),
+    ("offer_id", "Артикул"),
+    ("name", "Название товара или услуги"),
+    ("count", "Количество"),
+    (
+        "accruals_for_sale",
+        "За продажу или возврат до вычета комиссий и услуг",
+    ),
+    ("sale_commission_percents", "Ставка комиссии"),
+    ("sale_commission", "Комиссия за продажу"),
+    ("order_assembly", "Сборка заказа"),
+    ("shipment_processing", "Обработка отправления"),
+    ("highway", "Магистраль"),
+    ("last_mile", "Последняя миля"),
+    ("reverse_highway", "Обратная магистраль"),
+    ("refund_processing", "Обработка возврата"),
+    (
+        "processing_of_cancelled_or_unclaimed_item",
+        "Обработка отменённого или невостребованного товара",
+    ),
+    ("processing_of_unbought_item", "Обработка невыкупленного товара"),
+    ("logistics", "Логистика"),
+    ("reverse_logistics", "Обратная логистика"),
+    ("amount", "Итого"),
+)
+TRANSACTION_COLUMNS = tuple(column for column, _ in TRANSACTION_SHEET_SCHEMA)
+TRANSACTION_SHEET_HEADER = tuple(header for _, header in TRANSACTION_SHEET_SCHEMA)
 
 
 class OzonPayloadError(ValueError):
@@ -320,11 +354,11 @@ class TransactionRow:
 
     operation_date: str = ""
     operation_type_name: str = ""
-    operation_id: int = 0
     posting_number: str = ""
     order_date: str = ""
-    delivery_schema: str = ""
+    warehouse_name: str = ""
     sku: int | None = None
+    offer_id: str = ""
     name: str = ""
     count: int = 0
     accruals_for_sale: Decimal = Decimal("0")
@@ -341,11 +375,13 @@ class TransactionRow:
     logistics: Decimal = Decimal("0")
     reverse_logistics: Decimal = Decimal("0")
     amount: Decimal = Decimal("0")
+    operation_id: int = 0
 
     def as_list(self) -> list[Any]:
         """Return JSON-compatible values in the worksheet's stable order."""
 
-        return [float(value) if isinstance(value, Decimal) else value for value in astuple(self)]
+        values = (getattr(self, column) for column in TRANSACTION_COLUMNS)
+        return [float(value) if isinstance(value, Decimal) else value for value in values]
 
 
 def _find_accrual_fees(value: object, path: str) -> tuple[AccrualFee, ...]:

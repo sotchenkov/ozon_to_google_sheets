@@ -9,16 +9,23 @@ from typing import Any, Protocol
 
 import gspread
 
-from .models import TRANSACTION_COLUMNS
+from .models import (
+    LEGACY_TRANSACTION_COLUMNS,
+    TRANSACTION_COLUMNS,
+    TRANSACTION_SHEET_HEADER,
+)
 
-SHEET_HEADER = TRANSACTION_COLUMNS
+SHEET_HEADER = TRANSACTION_SHEET_HEADER
 COLUMN_COUNT = len(SHEET_HEADER)
-OPERATION_ID_INDEX = SHEET_HEADER.index("operation_id")
-SKU_INDEX = SHEET_HEADER.index("sku")
+OPERATION_DATE_INDEX = TRANSACTION_COLUMNS.index("operation_date")
+OPERATION_TYPE_INDEX = TRANSACTION_COLUMNS.index("operation_type_name")
+OPERATION_REFERENCE_INDEX = TRANSACTION_COLUMNS.index("posting_number")
+SKU_INDEX = TRANSACTION_COLUMNS.index("sku")
 FIRST_DATA_ROW = 2
 LAST_COLUMN = "W"
 SHEET_RANGE = f"A1:{LAST_COLUMN}"
-RowKey = tuple[str, str]
+OperationKey = tuple[str, str, str]
+RowKey = tuple[str, str, str, str]
 
 
 class GoogleSheetsError(RuntimeError):
@@ -87,12 +94,12 @@ class GoogleSheetsAdapter:
         active_logger.info("Success connecting to Google Sheets")
         return cls(worksheet, logger=active_logger)
 
-    def get_operation_ids(self) -> list[str]:
+    def get_operation_references(self) -> list[str]:
         values = self._read_values()
         return [
-            operation_id
+            operation_reference
             for row in values[FIRST_DATA_ROW - 1 :]
-            if (operation_id := _operation_id(row))
+            if (operation_reference := _operation_reference(row))
         ]
 
     def upsert_rows(self, data: list[list[Any]]) -> None:
@@ -110,7 +117,7 @@ class GoogleSheetsAdapter:
             replacements.append((1, list(SHEET_HEADER)))
 
         existing_rows = _index_existing_rows(sheet_values)
-        incoming_operation_ids = {key[0] for key in incoming_rows}
+        incoming_operation_keys = {key[:3] for key in incoming_rows}
         for key, row in incoming_rows.items():
             positions = existing_rows.get(key, [])
             if positions:
@@ -123,7 +130,7 @@ class GoogleSheetsAdapter:
                 rows_to_append.append(row)
 
         for key, positions in existing_rows.items():
-            if key[0] in incoming_operation_ids and key not in incoming_rows:
+            if key[:3] in incoming_operation_keys and key not in incoming_rows:
                 rows_to_clear.update(positions)
 
         if rows_to_append:
@@ -150,8 +157,8 @@ class GoogleSheetsAdapter:
                 self._logger.exception(message)
                 raise GoogleSheetsError(message) from error
 
-        for operation_id in sorted(incoming_operation_ids):
-            self._logger.info("Operation %s synchronized with Google Sheets", operation_id)
+        for operation_key in sorted(incoming_operation_keys):
+            self._logger.info("Operation %s synchronized with Google Sheets", operation_key)
 
     def _read_values(self) -> list[list[Any]]:
         try:
@@ -175,13 +182,14 @@ def _index_incoming_rows(data: Sequence[list[Any]]) -> dict[RowKey, list[Any]]:
                 f"Transaction row {position} has {len(row)} columns; expected {COLUMN_COUNT}"
             )
         key = _row_key(row)
-        if not key[0]:
+        if not key[2]:
             raise GoogleSheetsSchemaError(
-                f"Transaction row {position} must contain an operation_id"
+                f"Transaction row {position} must contain a posting number or service ID"
             )
         if key in rows_by_key:
             raise GoogleSheetsSchemaError(
-                "Transaction rows must have unique operation_id and sku values; "
+                "Transaction rows must have a unique date, accrual type, "
+                "posting or service ID, and sku; "
                 f"duplicate key {key!r}"
             )
         rows_by_key[key] = row
@@ -198,6 +206,13 @@ def _index_existing_rows(values: Sequence[Sequence[Any]]) -> dict[RowKey, list[i
 
 
 def _header_needs_update(header: Sequence[Any]) -> bool:
+    if _matches_legacy_header(header):
+        raise GoogleSheetsSchemaError(
+            "Worksheet uses the legacy English header. Automatic migration is unsafe "
+            "because the column meanings changed. Back up the worksheet, create a new "
+            "empty worksheet, and set GOOGLE_WORKSHEET_ID to its gid."
+        )
+
     needs_update = len(header) < COLUMN_COUNT
     for index, expected in enumerate(SHEET_HEADER):
         actual = header[index] if index < len(header) else ""
@@ -211,11 +226,30 @@ def _header_needs_update(header: Sequence[Any]) -> bool:
 
 
 def _row_key(row: Sequence[Any]) -> RowKey:
-    return (_operation_id(row), _identifier_at(row, SKU_INDEX))
+    return (*_operation_key(row), _identifier_at(row, SKU_INDEX))
 
 
-def _operation_id(row: Sequence[Any]) -> str:
-    return _identifier_at(row, OPERATION_ID_INDEX)
+def _operation_key(row: Sequence[Any]) -> OperationKey:
+    return (
+        _identifier_at(row, OPERATION_DATE_INDEX),
+        _identifier_at(row, OPERATION_TYPE_INDEX),
+        _operation_reference(row),
+    )
+
+
+def _operation_reference(row: Sequence[Any]) -> str:
+    return _identifier_at(row, OPERATION_REFERENCE_INDEX)
+
+
+def _matches_legacy_header(header: Sequence[Any]) -> bool:
+    matched = False
+    for index, actual in enumerate(header[:COLUMN_COUNT]):
+        if _is_blank(actual):
+            continue
+        if str(actual).strip() != LEGACY_TRANSACTION_COLUMNS[index]:
+            return False
+        matched = True
+    return matched
 
 
 def _identifier_at(row: Sequence[Any], index: int) -> str:
