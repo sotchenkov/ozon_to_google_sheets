@@ -1,12 +1,19 @@
-"""Local entry point and application composition root."""
+"""Environment-driven application composition and process entry point."""
 
 from __future__ import annotations
+
+import sys
+from collections.abc import Sequence
+from typing import TextIO
 
 from .config import AppConfig, load_config
 from .google_sheets import GoogleSheetsAdapter
 from .logging import configure_file_logging
 from .ozon import OzonClient
 from .service import SyncService
+
+EXIT_SUCCESS = 0
+EXIT_USAGE_ERROR = 2
 
 
 def run(config: AppConfig) -> list[int]:
@@ -34,6 +41,20 @@ def run(config: AppConfig) -> list[int]:
         logger.info("The application has shut down")
 
 
-def main() -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    stderr: TextIO | None = None,
+) -> int:
+    arguments = tuple(sys.argv[1:] if argv is None else argv)
+    if arguments:
+        error_output = sys.stderr if stderr is None else stderr
+        print(
+            "Error: command-line arguments are not supported; "
+            "configure the application through environment variables.",
+            file=error_output,
+        )
+        return EXIT_USAGE_ERROR
+
     run(load_config())
-    return 0
+    return EXIT_SUCCESS

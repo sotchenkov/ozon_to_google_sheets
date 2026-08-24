@@ -18,7 +18,7 @@ def test_package_imports_have_no_filesystem_side_effects(tmp_path: Path) -> None
     imports = "; ".join(
         f"import ozon_to_google_sheets.{module}"
         for module in (
-            "cli",
+            "application",
             "config",
             "google_sheets",
             "logging",

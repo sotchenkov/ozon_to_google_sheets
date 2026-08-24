@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ozon-to-google-sheets = "ozon_to_google_sheets.cli:main"
+ozon-to-google-sheets = "ozon_to_google_sheets.application:main"
 
 [project.urls]
 Homepage = "https://github.com/sotchenkov/ozon_to_google_sheets"

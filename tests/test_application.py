@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import runpy
 from datetime import date
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from ozon_to_google_sheets import cli
+from ozon_to_google_sheets import application
 from ozon_to_google_sheets.config import AppConfig
 
 
@@ -20,7 +21,7 @@ def test_run_composes_external_adapters_and_sync_service(
     logger, calls = _patch_composition(monkeypatch, service)
     config = _config(tmp_path)
 
-    result = cli.run(config)
+    result = application.run(config)
 
     assert result == [910001]
     assert calls["ozon"][:2] == ("synthetic-token", "synthetic-client")
@@ -54,7 +55,7 @@ def test_run_logs_shutdown_when_service_fails(
     logger, _ = _patch_composition(monkeypatch, service)
 
     with pytest.raises(RuntimeError, match="synthetic synchronization failure"):
-        cli.run(_config(tmp_path))
+        application.run(_config(tmp_path))
 
     assert logger.messages == [
         "The application has been started",
@@ -68,17 +69,38 @@ def test_main_loads_config_runs_once_and_returns_success(
 ) -> None:
     config = _config(tmp_path)
     calls: list[AppConfig] = []
-    monkeypatch.setattr(cli, "load_config", lambda: config)
-    monkeypatch.setattr(cli, "run", lambda value: calls.append(value) or [910001])
+    monkeypatch.setattr(application, "load_config", lambda: config)
+    monkeypatch.setattr(application, "run", lambda value: calls.append(value) or [910001])
 
-    assert cli.main() == 0
+    assert application.main([]) == application.EXIT_SUCCESS
     assert calls == [config]
 
 
-def test_package_module_entrypoint_uses_cli_exit_code(
+@pytest.mark.parametrize("argument", ("--help", "--version", "doctor", "--dry-run"))
+def test_main_rejects_all_arguments_before_loading_config(
+    monkeypatch: pytest.MonkeyPatch,
+    argument: str,
+) -> None:
+    stderr = StringIO()
+    monkeypatch.setattr(
+        application,
+        "load_config",
+        lambda: pytest.fail("configuration must not load when arguments are present"),
+    )
+
+    exit_code = application.main([argument], stderr=stderr)
+
+    assert exit_code == application.EXIT_USAGE_ERROR
+    assert stderr.getvalue() == (
+        "Error: command-line arguments are not supported; "
+        "configure the application through environment variables.\n"
+    )
+
+
+def test_package_module_entrypoint_uses_application_exit_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(cli, "main", lambda: 7)
+    monkeypatch.setattr(application, "main", lambda: 7)
 
     with pytest.raises(SystemExit) as error:
         runpy.run_module("ozon_to_google_sheets.__main__", run_name="__main__")
@@ -86,10 +108,10 @@ def test_package_module_entrypoint_uses_cli_exit_code(
     assert error.value.code == 7
 
 
-def test_repository_entrypoint_uses_cli_exit_code(
+def test_repository_entrypoint_uses_application_exit_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(cli, "main", lambda: 9)
+    monkeypatch.setattr(application, "main", lambda: 9)
     entrypoint = Path(__file__).parents[1] / "main.py"
 
     with pytest.raises(SystemExit) as error:
@@ -147,10 +169,10 @@ def _patch_composition(
         calls["service"] = options
         return service
 
-    monkeypatch.setattr(cli, "configure_file_logging", lambda _path: logger)
-    monkeypatch.setattr(cli, "OzonClient", make_ozon)
-    monkeypatch.setattr(cli, "GoogleSheetsAdapter", SimpleNamespace(connect=connect_sheet))
-    monkeypatch.setattr(cli, "SyncService", make_service)
+    monkeypatch.setattr(application, "configure_file_logging", lambda _path: logger)
+    monkeypatch.setattr(application, "OzonClient", make_ozon)
+    monkeypatch.setattr(application, "GoogleSheetsAdapter", SimpleNamespace(connect=connect_sheet))
+    monkeypatch.setattr(application, "SyncService", make_service)
     return logger, calls
 
 
