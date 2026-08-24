@@ -37,8 +37,11 @@ trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
 ## Run with Docker Compose
 
 Copy `.env.example` to `.env`, replace every placeholder, and place the Google service-account
-file at `secrets/google-service-account.json`. The entire local `secrets` directory is mounted
-read-only at `/app/secrets`; it is ignored by Git and is never included in the image.
+file at `secrets/google-service-account.json`. Create a local `logs` directory for persistent
+application logs. On Linux, make it writable by the container user with UID and GID `10001`.
+The local `logs` directory is mounted read-write at `/app/logs`, while `secrets` is mounted
+read-only at `/app/secrets`. Both directories are ignored by Git and are never included in the
+image.
 
 Run the one-shot synchronization from the GHCR image with:
 
