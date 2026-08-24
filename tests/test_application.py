@@ -75,9 +75,12 @@ def test_run_rejects_concurrent_sync_for_same_worksheet(
     logger, _ = _patch_composition(monkeypatch, service)
     config = _config(tmp_path)
 
-    with application._synchronization_lock(config), pytest.raises(
-        application.ConcurrentSynchronizationError,
-        match="Another synchronization is already running.*Wait for it to finish",
+    with (
+        application._synchronization_lock(config),
+        pytest.raises(
+            application.ConcurrentSynchronizationError,
+            match="Another synchronization is already running.*Wait for it to finish",
+        ),
     ):
         application.run(config)
 

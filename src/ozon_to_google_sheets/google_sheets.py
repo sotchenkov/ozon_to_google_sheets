@@ -155,9 +155,7 @@ class GoogleSheetsAdapter:
         sheet_values = self._read_values()
         header = sheet_values[0] if sheet_values else []
         if _header_needs_update(header):
-            self._write_updates(
-                [{"range": f"A1:{LAST_COLUMN}1", "values": [list(SHEET_HEADER)]}]
-            )
+            self._write_updates([{"range": f"A1:{LAST_COLUMN}1", "values": [list(SHEET_HEADER)]}])
 
     def upsert_rows(self, data: list[list[Any]]) -> None:
         if not data:
@@ -198,8 +196,7 @@ class GoogleSheetsAdapter:
             )
 
         replacements.extend(
-            (row_number, ["" for _ in range(COLUMN_COUNT)])
-            for row_number in rows_to_clear
+            (row_number, ["" for _ in range(COLUMN_COUNT)]) for row_number in rows_to_clear
         )
 
         updates = _build_update_ranges(replacements)
@@ -306,8 +303,7 @@ def _matches_legacy_header(header: Sequence[Any]) -> bool:
         ("ID операции", *PREVIOUS_USER_TRANSACTION_SHEET_HEADER),
     )
     return any(
-        len(header) > 8 + (expected[0] == "ID операции")
-        and _matches_header(header, expected)
+        len(header) > 8 + (expected[0] == "ID операции") and _matches_header(header, expected)
         for expected in previous_headers
     )
 

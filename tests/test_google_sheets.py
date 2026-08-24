@@ -64,9 +64,7 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
     expected_credentials: object = (
         "credentials-for-test.json" if credential_source == "path" else {"type": "service_account"}
     )
-    assert auth_calls == [
-        (credential_source, expected_credentials, ReliableHTTPClient)
-    ]
+    assert auth_calls == [(credential_source, expected_credentials, ReliableHTTPClient)]
     assert client.spreadsheet_ids == ["spreadsheet-for-test"]
     assert client.worksheet_ids == [0]
     assert adapter.get_operation_ids() == []
@@ -160,16 +158,22 @@ def test_google_http_client_does_not_retry_permanent_errors(
 def test_retry_after_http_date_is_bounded() -> None:
     now = datetime(2026, 8, 24, 10, 0, tzinfo=timezone.utc)
 
-    assert google_sheets._retry_delay(
-        "Mon, 24 Aug 2026 10:00:12 GMT",
-        1,
-        now=now,
-    ) == 12.0
-    assert google_sheets._retry_delay(
-        "Mon, 24 Aug 2026 10:02:00 GMT",
-        1,
-        now=now,
-    ) == 30.0
+    assert (
+        google_sheets._retry_delay(
+            "Mon, 24 Aug 2026 10:00:12 GMT",
+            1,
+            now=now,
+        )
+        == 12.0
+    )
+    assert (
+        google_sheets._retry_delay(
+            "Mon, 24 Aug 2026 10:02:00 GMT",
+            1,
+            now=now,
+        )
+        == 30.0
+    )
 
 
 @pytest.mark.parametrize(
