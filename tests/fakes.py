@@ -152,11 +152,15 @@ class FakeOzonGateway:
         posting_accruals: tuple[PostingAccrual, ...] = (),
         *,
         failures: Mapping[str, Exception] | None = None,
+        accruals_by_day: Mapping[date, tuple[Accrual, ...]] | None = None,
+        accrual_failures_by_day: Mapping[date, Exception] | None = None,
     ) -> None:
         self._accruals = accruals
         self._accrual_types = accrual_types
         self._posting_accruals = posting_accruals
         self._failures = dict(failures or {})
+        self._accruals_by_day = dict(accruals_by_day) if accruals_by_day is not None else None
+        self._accrual_failures_by_day = dict(accrual_failures_by_day or {})
         self.calls: list[tuple[Any, ...]] = []
 
     def get_accruals(
@@ -166,7 +170,13 @@ class FakeOzonGateway:
         date_to: date,
     ) -> tuple[Accrual, ...]:
         self.calls.append(("accruals", endpoint, date_from, date_to))
+        if error := self._accrual_failures_by_day.get(date_from):
+            raise error
         self._raise_for("accruals")
+        if self._accruals_by_day is not None:
+            if date_from != date_to:
+                raise AssertionError("Daily fake requests must use one date")
+            return self._accruals_by_day.get(date_from, ())
         return self._accruals
 
     def get_accrual_types(self, accrual_endpoint: str) -> tuple[AccrualType, ...]:
@@ -195,12 +205,14 @@ class FakeOperationsSheet:
         self.failure = failure
         self.rows: list[list[Any]] = []
         self.operation_ids: list[int] = []
+        self.upsert_batches: list[list[list[Any]]] = []
         self.upsert_calls = 0
 
     def upsert_rows(self, data: list[list[Any]]) -> None:
         self.upsert_calls += 1
         if self.failure is not None:
             raise self.failure
+        self.upsert_batches.append(data)
         self.rows = data
         self.operation_ids = list(dict.fromkeys(row[0] for row in data))
 
