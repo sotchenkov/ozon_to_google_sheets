@@ -212,21 +212,45 @@ If you need to share application logs, remove tokens, keys, seller IDs, and cust
 
 ## Development
 
+To reproduce the Python part of CI locally:
+
 ```console
-uv sync --locked --python 3.14
+uv sync --locked --python 3.10
 uv run --locked ruff format --check .
 uv run --locked ruff check .
 uv run --locked pytest
-```
-
-Tests run without access to Ozon or Google. CI runs formatting, lint, tests, and the package build.
-Pull requests also build and scan the Docker image.
-
-Build the package:
-
-```console
 uv build
 ```
+
+Repeat this block with `--python 3.14`: CI tests the lowest and highest supported Python versions.
+Tests run without access to Ozon or Google.
+
+To verify the built wheel in a clean environment:
+
+```console
+package_environment="$(mktemp -d)/venv"
+uv venv --python 3.14 "$package_environment"
+uv pip install --python "$package_environment/bin/python" dist/*.whl
+"$package_environment/bin/python" -c "import ozon_to_google_sheets"
+test -x "$package_environment/bin/ozon-to-google-sheets"
+```
+
+Compose and container checks require Docker Buildx; building a foreign architecture also requires
+QEMU. Trivy must be available as the `trivy` command:
+
+```console
+OZON_ENV_FILE=.env.example docker compose config --quiet
+docker buildx build --platform linux/amd64 --load -t ozon-to-google-sheets:ci-amd64 .
+trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 ozon-to-google-sheets:ci-amd64
+docker buildx build --platform linux/arm64 --load -t ozon-to-google-sheets:ci-arm64 .
+trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 ozon-to-google-sheets:ci-arm64
+```
+
+CI runs the Python checks and `docker compose config` for every pull request. Both architectures are
+built and scanned only for pull requests targeting `main`. After a merge to `main`, CI checks
+`linux/amd64` and `linux/arm64` again; the `sha-*` and `latest` tags move only after both Trivy scans
+succeed. A separate pull request then pins the verified digest in the `develop` branch's
+`docker-compose.yml`.
 
 ## Help and support
 

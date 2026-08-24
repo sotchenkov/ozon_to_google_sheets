@@ -209,21 +209,45 @@ ID продавца и данные покупателей.
 
 ## Разработка
 
+Локальное воспроизведение Python-части CI:
+
 ```console
-uv sync --locked --python 3.14
+uv sync --locked --python 3.10
 uv run --locked ruff format --check .
 uv run --locked ruff check .
 uv run --locked pytest
-```
-
-Тесты работают без доступа к Ozon и Google. CI запускает форматирование, lint, тесты и сборку
-пакета. Для pull request также собирается и проверяется Docker image.
-
-Сборка пакета:
-
-```console
 uv build
 ```
+
+Повторите этот блок с `--python 3.14`: CI проверяет нижнюю и верхнюю заявленные версии Python.
+Тесты работают без доступа к Ozon и Google.
+
+Проверка установки собранного wheel в чистое окружение:
+
+```console
+package_environment="$(mktemp -d)/venv"
+uv venv --python 3.14 "$package_environment"
+uv pip install --python "$package_environment/bin/python" dist/*.whl
+"$package_environment/bin/python" -c "import ozon_to_google_sheets"
+test -x "$package_environment/bin/ozon-to-google-sheets"
+```
+
+Проверка Compose и контейнеров требует Docker Buildx; для сборки чужой архитектуры также нужен
+QEMU. Trivy должен быть доступен как команда `trivy`:
+
+```console
+OZON_ENV_FILE=.env.example docker compose config --quiet
+docker buildx build --platform linux/amd64 --load -t ozon-to-google-sheets:ci-amd64 .
+trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 ozon-to-google-sheets:ci-amd64
+docker buildx build --platform linux/arm64 --load -t ozon-to-google-sheets:ci-arm64 .
+trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 ozon-to-google-sheets:ci-arm64
+```
+
+Для каждого pull request CI запускает Python-проверки и `docker compose config`. Образы обеих
+архитектур собираются и сканируются только для pull request в `main`. После merge в `main` CI
+повторно проверяет `linux/amd64` и `linux/arm64`; теги `sha-*` и `latest` обновляются только после
+успешного Trivy для обеих архитектур. Затем отдельный pull request закрепляет проверенный digest в
+`docker-compose.yml` ветки `develop`.
 
 ## Помощь и поддержка
 
