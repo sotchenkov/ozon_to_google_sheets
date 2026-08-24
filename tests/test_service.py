@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
 
-from ozon_to_google_sheets.models import AccrualPage, parse_accrual_types
+from ozon_to_google_sheets.models import Accrual, AccrualPage, parse_accrual_types
 from ozon_to_google_sheets.service import SyncService
 from tests.fakes import FakeOperationsSheet, FakeOzonGateway
 
@@ -167,6 +167,49 @@ def test_service_keeps_completed_days_when_later_day_fails(
     assert "Resume with OZON_DATE_FROM=2026-08-21" in caplog.text
 
 
+def test_service_resumes_long_backfill_without_replaying_committed_days() -> None:
+    first_day = date(2026, 7, 1)
+    days = [first_day + timedelta(days=offset) for offset in range(31)]
+    operation_ids = [920000 + offset for offset in range(len(days))]
+    accruals_by_day = {
+        current_day: _daily_accrual(accrual_id, current_day)
+        for current_day, accrual_id in zip(days, operation_ids, strict=True)
+    }
+    failed_day_index = 24
+    failed_day = days[failed_day_index]
+    sheet = FakeOperationsSheet()
+    initial_ozon = FakeOzonGateway(
+        accruals_by_day=accruals_by_day,
+        accrual_failures_by_day={failed_day: RuntimeError("synthetic late failure")},
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic late failure"):
+        _service(
+            initial_ozon,
+            sheet,
+            date_from=days[0],
+            date_to=days[-1],
+        ).run()
+
+    resumed_ozon = FakeOzonGateway(accruals_by_day=accruals_by_day)
+    resumed_ids = _service(
+        resumed_ozon,
+        sheet,
+        date_from=failed_day,
+        date_to=days[-1],
+    ).run()
+
+    assert resumed_ids == operation_ids[failed_day_index:]
+    assert [row[0] for batch in sheet.upsert_batches for row in batch] == operation_ids
+    assert [call[2] for call in initial_ozon.calls if call[0] == "accruals"] == days[
+        : failed_day_index + 1
+    ]
+    assert [call[2] for call in resumed_ozon.calls if call[0] == "accruals"] == days[
+        failed_day_index:
+    ]
+    assert sheet.ensure_schema_calls == 2
+
+
 def test_service_reuses_live_type_catalogue_across_backfill_days(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
@@ -207,3 +250,19 @@ def _service(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+def _daily_accrual(accrual_id: int, current_day: date) -> tuple[Accrual, ...]:
+    return AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": accrual_id,
+                    "accrued_category": "NON_ITEM",
+                    "date": current_day.isoformat(),
+                    "unit_number": f"service-test-{accrual_id}",
+                    "total_amount": {"amount": "-1.00", "currency": "RUB"},
+                }
+            ]
+        }
+    ).accruals
