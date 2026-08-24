@@ -6,7 +6,6 @@ import errno
 import fcntl
 import hashlib
 import sys
-import tempfile
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,6 +22,7 @@ EXIT_SUCCESS = 0
 EXIT_RUNTIME_ERROR = 1
 EXIT_USAGE_ERROR = 2
 EXIT_CONFIGURATION_ERROR = 2
+
 
 class ConcurrentSynchronizationError(RuntimeError):
     """Raised when the same worksheet is already being synchronized locally."""
@@ -100,8 +100,7 @@ def main(
 
     success_output = sys.stdout if stdout is None else stdout
     print(
-        "Synchronization completed successfully. "
-        f"Processed Ozon accruals: {len(operation_ids)}.",
+        f"Synchronization completed successfully. Processed Ozon accruals: {len(operation_ids)}.",
         file=success_output,
     )
     return EXIT_SUCCESS
@@ -110,6 +109,7 @@ def main(
 @contextmanager
 def _synchronization_lock(config: AppConfig) -> Iterator[None]:
     lock_path = _synchronization_lock_path(config)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a", encoding="utf-8") as lock_file:
         try:
             fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -124,8 +124,6 @@ def _synchronization_lock(config: AppConfig) -> Iterator[None]:
 
 
 def _synchronization_lock_path(config: AppConfig) -> Path:
-    sheet_identity = (
-        f"{config.google_spreadsheet_id}\0{config.google_worksheet_id}".encode()
-    )
+    sheet_identity = f"{config.google_spreadsheet_id}\0{config.google_worksheet_id}".encode()
     digest = hashlib.sha256(sheet_identity).hexdigest()
-    return Path(tempfile.gettempdir()) / f"ozon-to-google-sheets-{digest}.lock"
+    return config.log_file.parent / f".ozon-to-google-sheets-{digest}.lock"
