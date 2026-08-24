@@ -12,6 +12,7 @@ from ozon_to_google_sheets.google_sheets import (
     GoogleSheetsError,
     GoogleSheetsSchemaError,
 )
+from ozon_to_google_sheets.models import LEGACY_TRANSACTION_COLUMNS
 from tests.fakes import FakeGspreadClient, FakeWorksheet
 
 
@@ -54,7 +55,7 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
     assert auth_calls == [(credential_source, expected_credentials)]
     assert client.spreadsheet_ids == ["spreadsheet-for-test"]
     assert client.worksheet_ids == [0]
-    assert adapter.get_operation_ids() == []
+    assert adapter.get_operation_references() == []
 
 
 def test_connect_wraps_google_errors_without_credentials(
@@ -194,7 +195,7 @@ def test_upsert_clears_duplicates_and_stale_products_idempotently() -> None:
 
     assert len(worksheet.batch_update_calls) == 1
     assert len(worksheet.batch_clear_calls) == 1
-    assert adapter.get_operation_ids() == ["42", "43"]
+    assert adapter.get_operation_references() == ["42", "43"]
 
 
 def test_upsert_groups_disjoint_duplicate_and_stale_ranges() -> None:
@@ -219,12 +220,12 @@ def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
         ]
     )
     worksheet.rows[1][2] = 42.0
-    worksheet.rows[1][6] = 1001.0
+    worksheet.rows[1][5] = 1001.0
 
     adapter = GoogleSheetsAdapter(worksheet)
     adapter.upsert_rows([_sheet_row(42, 1001)])
 
-    assert adapter.get_operation_ids() == ["42", "43"]
+    assert adapter.get_operation_references() == ["42", "43"]
     assert worksheet.batch_update_calls == []
 
 
@@ -256,10 +257,49 @@ def test_mismatched_header_stops_before_writing() -> None:
 
 
 @pytest.mark.parametrize(
+    "legacy_header",
+    (
+        list(LEGACY_TRANSACTION_COLUMNS),
+        list(LEGACY_TRANSACTION_COLUMNS[:4]),
+    ),
+)
+def test_legacy_english_header_requires_explicit_lossless_migration(
+    legacy_header: list[str],
+) -> None:
+    old_row = [
+        "2026-08-23",
+        "POSTING",
+        42,
+        "posting-42",
+        "2026-08-23",
+        "FBO",
+        1001,
+        "",
+        2,
+        *("" for _ in range(14)),
+    ]
+    original_rows = [legacy_header, old_row]
+    worksheet = FakeWorksheet(original_rows)
+
+    with pytest.raises(
+        GoogleSheetsSchemaError,
+        match="legacy English header.*Back up the worksheet.*GOOGLE_WORKSHEET_ID",
+    ):
+        GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row("posting-42", 1001)])
+
+    assert worksheet.rows == original_rows
+    assert worksheet.batch_update_calls == []
+    assert worksheet.batch_clear_calls == []
+
+
+@pytest.mark.parametrize(
     ("row", "message"),
     (
         (["too", "short"], "has 2 columns; expected 23"),
-        (["", "", "", *("" for _ in range(20))], "must contain an operation_id"),
+        (
+            ["", "", "", *("" for _ in range(20))],
+            "must contain a posting number or service ID",
+        ),
     ),
 )
 def test_invalid_incoming_rows_stop_before_reading(
@@ -309,11 +349,55 @@ def test_batch_clear_errors_have_clear_context() -> None:
         GoogleSheetsAdapter(worksheet).upsert_rows([row])
 
 
+def test_same_reference_on_other_dates_or_types_is_not_reconciled() -> None:
+    current = _sheet_row("shared-reference", 1001, marker="old")
+    stale = _sheet_row("shared-reference", 9999, marker="stale")
+    other_date = _sheet_row(
+        "shared-reference",
+        2002,
+        operation_date="2026-08-22",
+        marker="other-date",
+    )
+    other_type = _sheet_row(
+        "shared-reference",
+        3003,
+        operation_type="RETURN",
+        marker="other-type",
+    )
+    worksheet = FakeWorksheet([list(SHEET_HEADER), current, stale, other_date, other_type])
+    incoming = _sheet_row("shared-reference", 1001, marker="updated")
+
+    GoogleSheetsAdapter(worksheet).upsert_rows([incoming])
+
+    assert worksheet.batch_update_calls == [
+        {
+            "data": [{"range": "A2:W2", "values": [incoming]}],
+            "value_input_option": "RAW",
+        }
+    ]
+    assert worksheet.batch_clear_calls == [["A3:W3"]]
+    assert worksheet.rows[3] == other_date
+    assert worksheet.rows[4] == other_type
+
+
 def _sheet_row(
-    operation_id: int,
+    operation_reference: int | str,
     sku: int | None,
     *,
     count: int = 0,
     marker: str = "",
+    operation_date: str = "2026-08-23",
+    operation_type: str = "POSTING",
 ) -> list[Any]:
-    return [marker, "", operation_id, "", "", "", sku, "", count, *("" for _ in range(14))]
+    return [
+        operation_date,
+        operation_type,
+        operation_reference,
+        "",
+        "",
+        sku,
+        "",
+        marker,
+        count,
+        *("" for _ in range(14)),
+    ]

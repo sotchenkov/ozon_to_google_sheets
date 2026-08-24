@@ -194,7 +194,7 @@ class FakeOperationsSheet:
     def __init__(self, *, failure: Exception | None = None) -> None:
         self.failure = failure
         self.rows: list[list[Any]] = []
-        self.operation_ids: list[int] = []
+        self.operation_references: list[str] = []
         self.upsert_calls = 0
 
     def upsert_rows(self, data: list[list[Any]]) -> None:
@@ -202,7 +202,7 @@ class FakeOperationsSheet:
         if self.failure is not None:
             raise self.failure
         self.rows = data
-        self.operation_ids = list(dict.fromkeys(row[2] for row in data))
+        self.operation_references = list(dict.fromkeys(str(row[2]) for row in data))
 
 
 def _range_rows(range_name: str) -> tuple[int, int]:

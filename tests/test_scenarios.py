@@ -4,7 +4,12 @@ from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
-from ozon_to_google_sheets.models import AccrualPage, parse_accrual_types, parse_posting_accruals
+from ozon_to_google_sheets.models import (
+    TRANSACTION_SHEET_HEADER,
+    AccrualPage,
+    parse_accrual_types,
+    parse_posting_accruals,
+)
 from ozon_to_google_sheets.parser import AccrualTransformer
 
 JsonFixtureLoader = Callable[[str], dict[str, Any]]
@@ -28,6 +33,21 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert row.sale_commission_percents == "12.5%"
     assert row.sale_commission == Decimal("-12.50")
     assert row.amount == Decimal("82.50")
+
+    sheet_values = dict(zip(TRANSACTION_SHEET_HEADER, row.as_list(), strict=True))
+    assert sheet_values["Дата начисления"] == "2026-08-20"
+    assert sheet_values["Тип начисления"] == "POSTING"
+    assert sheet_values["Номер отправления или идентификатор услуги"] == "posting-test-0001"
+    assert sheet_values["Дата принятия заказа в обработку или оказания услуги"] == ""
+    assert sheet_values["Склад отгрузки"] == ""
+    assert sheet_values["SKU"] == 100001
+    assert sheet_values["Артикул"] == ""
+    assert sheet_values["Название товара или услуги"] == ""
+    assert sheet_values["Количество"] == 1
+    assert sheet_values["За продажу или возврат до вычета комиссий и услуг"] == 100.0
+    assert sheet_values["Ставка комиссии"] == "12.5%"
+    assert sheet_values["Комиссия за продажу"] == -12.5
+    assert sheet_values["Итого"] == 82.5
 
 
 def test_multiple_products_keep_quantities_and_parent_total_once(
@@ -94,7 +114,7 @@ def test_missing_optional_fields_receive_documented_defaults(
     assert page.accruals[0].accrued_category == ""
     assert page.accruals[0].total_amount.amount == Decimal("0")
     assert rows[0].operation_id == 910040
-    assert rows[0].posting_number == ""
+    assert rows[0].posting_number == "910040"
     assert rows[0].sku is None
     assert rows[0].count == 0
     assert rows[0].amount == Decimal("0")
