@@ -139,6 +139,64 @@ def test_google_http_client_retries_network_and_server_failures(
     assert sleep_calls == [1.0, 2.0]
 
 
+@pytest.mark.parametrize("status_code", (408, 599))
+def test_google_http_client_retries_all_supported_transient_statuses(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: int,
+) -> None:
+    session = _ScriptedSession(
+        [
+            _google_response(status_code),
+            _google_response(200),
+        ]
+    )
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(google_sheets.time, "sleep", sleep_calls.append)
+
+    response = ReliableHTTPClient(object(), session=session).request(
+        "GET",
+        "https://sheets.googleapis.test/values",
+    )
+
+    assert response.status_code == 200
+    assert len(session.calls) == 2
+    assert sleep_calls == [1.0]
+
+
+def test_google_http_client_stops_after_retryable_api_error_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _ScriptedSession([_google_response(503) for _ in range(3)])
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(google_sheets.time, "sleep", sleep_calls.append)
+
+    with pytest.raises(google_sheets.APIError, match="synthetic Google error"):
+        ReliableHTTPClient(object(), session=session).request(
+            "GET",
+            "https://sheets.googleapis.test/values",
+        )
+
+    assert len(session.calls) == 3
+    assert sleep_calls == [1.0, 2.0]
+
+
+def test_google_http_client_stops_after_timeout_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _ScriptedSession([requests.Timeout("synthetic timeout") for _ in range(3)])
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(google_sheets.time, "sleep", sleep_calls.append)
+
+    with pytest.raises(requests.Timeout, match="synthetic timeout"):
+        ReliableHTTPClient(object(), session=session).request(
+            "GET",
+            "https://sheets.googleapis.test/values",
+        )
+
+    assert len(session.calls) == 3
+    assert sleep_calls == [1.0, 2.0]
+
+
 def test_google_http_client_does_not_retry_permanent_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -505,6 +563,21 @@ def test_sheet_api_errors_have_clear_context(failure: str, message: str) -> None
 
     with pytest.raises(GoogleSheetsError, match=message):
         GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row(42, 1001)])
+
+
+def test_failed_atomic_batch_preserves_all_existing_rows() -> None:
+    current = _sheet_row(42, 1001, count=1, marker="current")
+    duplicate = _sheet_row(42, 1001, count=1, marker="duplicate")
+    stale = _sheet_row(42, 9999, count=1, marker="stale")
+    unrelated = _sheet_row(43, 3003, count=4, marker="unrelated")
+    original_rows = [list(SHEET_HEADER), current, duplicate, stale, unrelated]
+    worksheet = FakeWorksheet(original_rows, failure="write")
+    replacement = _sheet_row(42, 1001, count=2, marker="replacement")
+
+    with pytest.raises(GoogleSheetsError, match="Could not write transaction rows"):
+        GoogleSheetsAdapter(worksheet).upsert_rows([replacement])
+
+    assert worksheet.rows == original_rows
 
 
 def test_large_identifiers_are_written_as_text_and_remain_idempotent() -> None:
