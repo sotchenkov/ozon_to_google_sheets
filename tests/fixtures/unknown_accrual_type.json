@@ -1,0 +1,22 @@
+{
+  "accruals": [
+    {
+      "accrual_id": 910050,
+      "accrued_category": "NON_ITEM",
+      "date": "2026-08-23",
+      "unit_number": "service-test-0050",
+      "total_amount": {
+        "amount": "-3.50",
+        "currency": "RUB"
+      },
+      "non_item_fee": {
+        "type_id": 599,
+        "accrued": {
+          "amount": "-3.50",
+          "currency": "RUB"
+        }
+      }
+    }
+  ],
+  "last_id": ""
+}
