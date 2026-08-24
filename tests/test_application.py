@@ -67,6 +67,27 @@ def test_run_logs_shutdown_when_service_fails(
     ]
 
 
+def test_run_rejects_concurrent_sync_for_same_worksheet(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    service = StubService(result=[910001])
+    logger, _ = _patch_composition(monkeypatch, service)
+    config = _config(tmp_path)
+
+    with application._synchronization_lock(config), pytest.raises(
+        application.ConcurrentSynchronizationError,
+        match="Another synchronization is already running.*Wait for it to finish",
+    ):
+        application.run(config)
+
+    assert service.run_calls == 0
+    assert logger.messages == [
+        "The application has been started",
+        "The application has shut down",
+    ]
+
+
 def test_main_loads_config_runs_once_and_returns_success(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -110,6 +131,7 @@ def test_main_reports_configuration_error_without_running(
 @pytest.mark.parametrize(
     "failure",
     (
+        application.ConcurrentSynchronizationError("synthetic concurrent run"),
         OzonRequestError("synthetic Ozon failure"),
         GoogleSheetsError("synthetic Google Sheets failure"),
         OzonPayloadError("synthetic payload failure"),
