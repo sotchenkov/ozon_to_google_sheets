@@ -41,8 +41,7 @@ def test_client_fetches_inclusive_period_and_follows_last_id(
         {"date": "2026-08-22", "last_id": ""},
     ]
     assert all(
-        call["headers"] == {"Client-Id": "client", "Api-Key": "token"}
-        for call in post.calls
+        call["headers"] == {"Client-Id": "client", "Api-Key": "token"} for call in post.calls
     )
     assert all(call["timeout"] == 30.0 for call in post.calls)
 
@@ -103,9 +102,7 @@ def test_client_does_not_retry_authentication_error(
 
 
 def test_client_limits_connection_retries() -> None:
-    post = FakeHTTPPost(
-        [requests.ConnectionError("offline"), requests.ConnectionError("offline")]
-    )
+    post = FakeHTTPPost([requests.ConnectionError("offline"), requests.ConnectionError("offline")])
     client = OzonClient("token", "client", post=post, max_retries=1, sleep=no_sleep)
 
     with pytest.raises(OzonRequestError, match="failed after 2 attempts: ConnectionError"):
@@ -153,13 +150,7 @@ def test_client_preserves_plain_text_api_error_context() -> None:
 def test_client_fetches_types_and_batches_unique_postings() -> None:
     post = FakeHTTPPost(
         [
-            FakeResponse(
-                payload={
-                    "accrual_types": [
-                        {"id": 7, "name": "LastMileCourier"}
-                    ]
-                }
-            ),
+            FakeResponse(payload={"accrual_types": [{"id": 7, "name": "LastMileCourier"}]}),
             FakeResponse(payload={"posting_accruals": [_posting("posting-1", 2)]}),
             FakeResponse(payload={"posting_accruals": [_posting("posting-3", 4)]}),
         ]

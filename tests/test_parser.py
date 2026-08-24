@@ -112,9 +112,7 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
             "last_id": "",
         }
     )
-    types = parse_accrual_types(
-        {"accrual_types": [_type(5, "PickUpPointReturnAcceptance")]}
-    )
+    types = parse_accrual_types({"accrual_types": [_type(5, "PickUpPointReturnAcceptance")]})
 
     rows = AccrualTransformer().transform(page.accruals, types, ())
 

@@ -101,9 +101,7 @@ class Commission:
                 data.get("commission_ratio"), f"{path}.commission_ratio"
             ),
             sale_amount=Money.from_api(data.get("sale_amount"), f"{path}.sale_amount"),
-            sale_commission=Money.from_api(
-                data.get("sale_commission"), f"{path}.sale_commission"
-            ),
+            sale_commission=Money.from_api(data.get("sale_commission"), f"{path}.sale_commission"),
             sale_price=Money.from_api(data.get("sale_price"), f"{path}.sale_price"),
             seller_price=Money.from_api(data.get("seller_price"), f"{path}.seller_price"),
             bonus=Money.from_api(data.get("bonus"), f"{path}.bonus"),
@@ -127,9 +125,7 @@ class Delivery:
                 AccrualFee.from_api(service, f"{path}.services[{index}]")
                 for index, service in enumerate(services)
             ),
-            total_accrued=Money.from_api(
-                data.get("total_accrued"), f"{path}.total_accrued"
-            ),
+            total_accrued=Money.from_api(data.get("total_accrued"), f"{path}.total_accrued"),
         )
 
 
@@ -165,9 +161,7 @@ class Posting:
             delivery_schema=_optional_string(
                 data.get("delivery_schema"), f"{path}.delivery_schema"
             ),
-            delivery_speed=_optional_integer(
-                data.get("delivery_speed"), f"{path}.delivery_speed"
-            ),
+            delivery_speed=_optional_integer(data.get("delivery_speed"), f"{path}.delivery_speed"),
             products=tuple(
                 PostingProduct.from_api(product, f"{path}.products[{index}]")
                 for index, product in enumerate(products)
@@ -187,8 +181,7 @@ class ItemFees:
         return cls(
             sku=_integer(data.get("sku"), f"{path}.sku"),
             fees=tuple(
-                AccrualFee.from_api(fee, f"{path}.fees[{index}]")
-                for index, fee in enumerate(fees)
+                AccrualFee.from_api(fee, f"{path}.fees[{index}]") for index, fee in enumerate(fees)
             ),
         )
 
@@ -231,9 +224,7 @@ class Accrual:
                 if non_item_data
                 else None
             ),
-            container_fees=_find_accrual_fees(
-                data.get("container_fees"), f"{path}.container_fees"
-            ),
+            container_fees=_find_accrual_fees(data.get("container_fees"), f"{path}.container_fees"),
         )
 
 

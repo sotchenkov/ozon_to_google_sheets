@@ -19,9 +19,7 @@ JsonFixtureLoader = Callable[[str], dict[str, Any]]
 def test_service_skips_type_catalogue_for_fee_free_product(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
-    accruals = AccrualPage.from_api(
-        load_json_fixture("ordinary_operation.json")
-    ).accruals
+    accruals = AccrualPage.from_api(load_json_fixture("ordinary_operation.json")).accruals
     ozon = FakeOzonGateway(accruals)
     sheet = FakeOperationsSheet()
 
@@ -37,9 +35,7 @@ def test_service_skips_type_catalogue_for_fee_free_product(
 def test_service_fetches_catalogue_and_postings_only_when_required(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
-    accruals = AccrualPage.from_api(
-        load_json_fixture("fees_and_services.json")
-    ).accruals
+    accruals = AccrualPage.from_api(load_json_fixture("fees_and_services.json")).accruals
     accrual_types = parse_accrual_types(load_json_fixture("accrual_types.json"))
     ozon = FakeOzonGateway(accruals, accrual_types)
     sheet = FakeOperationsSheet()
@@ -54,9 +50,7 @@ def test_service_fetches_catalogue_and_postings_only_when_required(
 def test_service_deduplication_keeps_latest_payload(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
-    original = AccrualPage.from_api(
-        load_json_fixture("ordinary_operation.json")
-    ).accruals[0]
+    original = AccrualPage.from_api(load_json_fixture("ordinary_operation.json")).accruals[0]
     corrected = replace(
         original,
         total_amount=Money(Decimal("99.25"), "RUB"),
@@ -74,9 +68,7 @@ def test_service_deduplication_keeps_latest_payload(
 def test_service_stops_before_sheet_when_type_request_fails(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
-    accruals = AccrualPage.from_api(
-        load_json_fixture("fees_and_services.json")
-    ).accruals
+    accruals = AccrualPage.from_api(load_json_fixture("fees_and_services.json")).accruals
     ozon = FakeOzonGateway(
         accruals,
         failures={"types": RuntimeError("synthetic type failure")},
@@ -93,9 +85,7 @@ def test_service_stops_before_sheet_when_type_request_fails(
 def test_service_propagates_sheet_failure_after_fetching_data(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
-    accruals = AccrualPage.from_api(
-        load_json_fixture("ordinary_operation.json")
-    ).accruals
+    accruals = AccrualPage.from_api(load_json_fixture("ordinary_operation.json")).accruals
     ozon = FakeOzonGateway(accruals)
     sheet = FakeOperationsSheet(failure=RuntimeError("synthetic sheet failure"))
 
