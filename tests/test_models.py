@@ -8,6 +8,7 @@ import pytest
 from ozon_to_google_sheets.models import (
     TRANSACTION_COLUMNS,
     AccrualPage,
+    Money,
     OzonPayloadError,
     TransactionRow,
     parse_accrual_types,
@@ -157,3 +158,44 @@ def test_transaction_row_converts_exact_money_for_sheet_transport() -> None:
 
 def test_transaction_columns_match_the_row_model() -> None:
     assert tuple(field.name for field in fields(TransactionRow)) == TRANSACTION_COLUMNS
+
+
+@pytest.mark.parametrize("amount", (True, [], "not-a-decimal"))
+def test_money_rejects_invalid_decimal_values(amount: object) -> None:
+    with pytest.raises(OzonPayloadError, match=r"money\.amount must be a decimal value"):
+        Money.from_api({"amount": amount}, "money")
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ([], "response must be an object"),
+        ({"accruals": {}}, "response.accruals must be an array"),
+        (
+            {"accruals": [{"accrual_id": True, "date": "2026-08-23"}]},
+            r"response.accruals\[0\].accrual_id must be an integer",
+        ),
+    ),
+)
+def test_accrual_page_rejects_invalid_container_types(
+    payload: object,
+    message: str,
+) -> None:
+    with pytest.raises(OzonPayloadError, match=message):
+        AccrualPage.from_api(payload)
+
+
+@pytest.mark.parametrize(
+    ("item", "message"),
+    (
+        ({"id": "not-an-integer", "name": "Logistic"}, "id must be an integer"),
+        ({"id": 1, "name": ""}, "name must be a non-empty string"),
+        ({"id": 1, "name": 123}, "name must be a string"),
+    ),
+)
+def test_accrual_types_report_invalid_required_fields(
+    item: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(OzonPayloadError, match=message):
+        parse_accrual_types({"accrual_types": [item]})

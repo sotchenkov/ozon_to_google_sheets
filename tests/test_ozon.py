@@ -40,6 +40,10 @@ def test_client_fetches_inclusive_period_and_follows_last_id(
         {"date": "2026-08-21", "last_id": "cursor-test-page-2"},
         {"date": "2026-08-22", "last_id": ""},
     ]
+    assert all(
+        call["headers"] == {"Client-Id": "client", "Api-Key": "token"}
+        for call in post.calls
+    )
     assert all(call["timeout"] == 30.0 for call in post.calls)
 
 
@@ -116,6 +120,36 @@ def test_client_reports_invalid_success_payload() -> None:
         client.get_accrual_types(ENDPOINT)
 
 
+def test_client_rejects_non_object_success_payload() -> None:
+    client = OzonClient(
+        "token",
+        "client",
+        post=FakeHTTPPost([FakeResponse(payload=[])]),
+        sleep=no_sleep,
+    )
+
+    with pytest.raises(OzonResponseError, match="must be a JSON object"):
+        client.get_accrual_types(ENDPOINT)
+
+
+def test_client_preserves_plain_text_api_error_context() -> None:
+    response = FakeResponse(
+        status_code=500,
+        json_error=ValueError("not json"),
+        text="synthetic upstream failure",
+    )
+    client = OzonClient(
+        "token",
+        "client",
+        post=FakeHTTPPost([response]),
+        max_retries=0,
+        sleep=no_sleep,
+    )
+
+    with pytest.raises(OzonAPIError, match=r"HTTP 500: synthetic upstream failure"):
+        client.get_accrual_types(ENDPOINT)
+
+
 def test_client_fetches_types_and_batches_unique_postings() -> None:
     post = FakeHTTPPost(
         [
@@ -157,6 +191,29 @@ def test_client_skips_posting_request_for_empty_input() -> None:
 
     assert client.get_posting_accruals(ENDPOINT, []) == ()
     assert post.calls == []
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    (
+        ({"timeout_seconds": 0}, "timeout_seconds must be positive"),
+        ({"max_retries": -1}, "max_retries must not be negative"),
+        ({"posting_batch_size": 0}, "posting_batch_size must be positive"),
+    ),
+)
+def test_client_rejects_invalid_request_limits(
+    options: dict[str, int],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        OzonClient("token", "client", **options)
+
+
+def test_related_requests_require_supported_accrual_endpoint() -> None:
+    client = OzonClient("token", "client", post=FakeHTTPPost([]), sleep=no_sleep)
+
+    with pytest.raises(ValueError, match="must end with '/by-day'"):
+        client.get_accrual_types("https://example.invalid/unsupported")
 
 
 def _page(accruals: list[dict[str, Any]], last_id: str) -> dict[str, Any]:

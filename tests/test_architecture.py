@@ -138,6 +138,10 @@ def test_config_rejects_invalid_worksheet_id(
             {"GOOGLE_CREDENTIALS_JSON": "not-json"},
             "GOOGLE_CREDENTIALS_JSON must contain a valid JSON object",
         ),
+        (
+            {"GOOGLE_CREDENTIALS_JSON": "[]"},
+            "GOOGLE_CREDENTIALS_JSON must contain a valid JSON object",
+        ),
     ),
 )
 def test_config_rejects_ambiguous_or_invalid_google_credentials(

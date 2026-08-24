@@ -79,6 +79,39 @@ def test_connect_wraps_google_errors_without_credentials(
     assert "credentials-for-test.json" not in str(error.value)
 
 
+@pytest.mark.parametrize(
+    ("credentials_path", "credentials_info"),
+    (
+        (None, None),
+        (Path("credentials-for-test.json"), {"type": "service_account"}),
+    ),
+)
+def test_connect_requires_exactly_one_credential_source(
+    credentials_path: Path | None,
+    credentials_info: dict[str, object] | None,
+) -> None:
+    with pytest.raises(
+        GoogleSheetsError,
+        match="Exactly one Google service-account credential source is required",
+    ):
+        GoogleSheetsAdapter.connect(
+            credentials_path=credentials_path,
+            credentials_info=credentials_info,
+            spreadsheet_id="spreadsheet-for-test",
+            worksheet_id=0,
+        )
+
+
+def test_empty_upsert_does_not_read_or_write_sheet() -> None:
+    worksheet = FakeWorksheet()
+
+    GoogleSheetsAdapter(worksheet).upsert_rows([])
+
+    assert worksheet.get_calls == []
+    assert worksheet.batch_update_calls == []
+    assert worksheet.batch_clear_calls == []
+
+
 def test_empty_sheet_writes_header_and_every_product_in_one_batch() -> None:
     worksheet = FakeWorksheet()
     rows = [
@@ -162,6 +195,37 @@ def test_upsert_clears_duplicates_and_stale_products_idempotently() -> None:
     assert len(worksheet.batch_update_calls) == 1
     assert len(worksheet.batch_clear_calls) == 1
     assert adapter.get_operation_ids() == ["42", "43"]
+
+
+def test_upsert_groups_disjoint_duplicate_and_stale_ranges() -> None:
+    current = _sheet_row(42, 1001, count=2)
+    duplicate = _sheet_row(42, 1001, count=2, marker="duplicate")
+    unrelated = _sheet_row(43, 3003, count=1)
+    stale = _sheet_row(42, 9999, count=1)
+    worksheet = FakeWorksheet([list(SHEET_HEADER), current, duplicate, unrelated, stale])
+
+    GoogleSheetsAdapter(worksheet).upsert_rows([current])
+
+    assert worksheet.batch_update_calls == []
+    assert worksheet.batch_clear_calls == [["A3:W3", "A5:W5"]]
+
+
+def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
+    worksheet = FakeWorksheet(
+        [
+            list(SHEET_HEADER),
+            _sheet_row(42, 1001),
+            _sheet_row(43, 1002),
+        ]
+    )
+    worksheet.rows[1][2] = 42.0
+    worksheet.rows[1][6] = 1001.0
+
+    adapter = GoogleSheetsAdapter(worksheet)
+    adapter.upsert_rows([_sheet_row(42, 1001)])
+
+    assert adapter.get_operation_ids() == ["42", "43"]
+    assert worksheet.batch_update_calls == []
 
 
 def test_partial_matching_header_is_completed() -> None:
