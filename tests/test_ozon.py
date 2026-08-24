@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
@@ -16,25 +17,28 @@ from ozon_to_google_sheets.ozon import (
 from tests.fakes import FakeHTTPPost, FakeResponse
 
 ENDPOINT = "https://example.invalid/v1/finance/accrual/by-day"
+JsonFixtureLoader = Callable[[str], dict[str, Any]]
 
 
-def test_client_fetches_inclusive_period_and_follows_last_id() -> None:
+def test_client_fetches_inclusive_period_and_follows_last_id(
+    load_json_fixture: JsonFixtureLoader,
+) -> None:
     post = FakeHTTPPost(
         [
-            FakeResponse(payload=_page([_accrual(1)], "cursor-1")),
-            FakeResponse(payload=_page([_accrual(2)], "")),
-            FakeResponse(payload=_page([], "")),
+            FakeResponse(payload=load_json_fixture("pagination_page_1.json")),
+            FakeResponse(payload=load_json_fixture("pagination_page_2.json")),
+            FakeResponse(payload=load_json_fixture("empty_response.json")),
         ]
     )
     client = OzonClient("token", "client", post=post, sleep=no_sleep)
 
-    accruals = client.get_accruals(ENDPOINT, date(2026, 8, 22), date(2026, 8, 23))
+    accruals = client.get_accruals(ENDPOINT, date(2026, 8, 21), date(2026, 8, 22))
 
-    assert [accrual.accrual_id for accrual in accruals] == [1, 2]
+    assert [accrual.accrual_id for accrual in accruals] == [910010, 910011]
     assert [call["json"] for call in post.calls] == [
+        {"date": "2026-08-21", "last_id": ""},
+        {"date": "2026-08-21", "last_id": "cursor-test-page-2"},
         {"date": "2026-08-22", "last_id": ""},
-        {"date": "2026-08-22", "last_id": "cursor-1"},
-        {"date": "2026-08-23", "last_id": ""},
     ]
     assert all(call["timeout"] == 30.0 for call in post.calls)
 
@@ -75,13 +79,20 @@ def test_client_retries_only_temporary_failures_with_timeout() -> None:
     assert post.calls[-1]["timeout"] == 12.5
 
 
-def test_client_does_not_retry_authentication_error() -> None:
+def test_client_does_not_retry_authentication_error(
+    load_json_fixture: JsonFixtureLoader,
+) -> None:
     post = FakeHTTPPost(
-        [FakeResponse(status_code=401, payload={"code": 7, "message": "invalid credentials"})]
+        [
+            FakeResponse(
+                status_code=401,
+                payload=load_json_fixture("error_response.json"),
+            )
+        ]
     )
     client = OzonClient("token", "client", post=post, max_retries=2, sleep=no_sleep)
 
-    with pytest.raises(OzonAPIError, match=r"HTTP 401: 7: invalid credentials"):
+    with pytest.raises(OzonAPIError, match=r"HTTP 401: 7: synthetic authentication failure"):
         client.get_accrual_types(ENDPOINT)
 
     assert len(post.calls) == 1
