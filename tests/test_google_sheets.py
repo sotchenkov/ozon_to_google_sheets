@@ -12,6 +12,7 @@ from ozon_to_google_sheets.google_sheets import (
     GoogleSheetsError,
     GoogleSheetsSchemaError,
 )
+from tests.fakes import FakeGspreadClient, FakeWorksheet
 
 
 @pytest.mark.parametrize("credential_source", ("path", "content"))
@@ -20,14 +21,14 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
     credential_source: str,
 ) -> None:
     worksheet = FakeWorksheet()
-    client = FakeClient(worksheet)
+    client = FakeGspreadClient(worksheet)
     auth_calls: list[tuple[str, object]] = []
 
-    def service_account(*, filename: str) -> FakeClient:
+    def service_account(*, filename: str) -> FakeGspreadClient:
         auth_calls.append(("path", filename))
         return client
 
-    def service_account_from_dict(credentials: object) -> FakeClient:
+    def service_account_from_dict(credentials: object) -> FakeGspreadClient:
         auth_calls.append(("content", credentials))
         return client
 
@@ -59,7 +60,7 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
 def test_connect_wraps_google_errors_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def service_account(*, filename: str) -> FakeClient:
+    def service_account(*, filename: str) -> FakeGspreadClient:
         raise OSError(f"cannot read {filename}")
 
     monkeypatch.setattr(google_sheets.gspread, "service_account", service_account)
@@ -244,79 +245,6 @@ def test_batch_clear_errors_have_clear_context() -> None:
         GoogleSheetsAdapter(worksheet).upsert_rows([row])
 
 
-class FakeClient:
-    def __init__(self, worksheet: FakeWorksheet) -> None:
-        self._worksheet = worksheet
-        self.spreadsheet_ids: list[str] = []
-        self.worksheet_ids: list[int] = []
-
-    def open_by_key(self, spreadsheet_id: str) -> FakeClient:
-        self.spreadsheet_ids.append(spreadsheet_id)
-        return self
-
-    def get_worksheet_by_id(self, worksheet_id: int) -> FakeWorksheet:
-        self.worksheet_ids.append(worksheet_id)
-        return self._worksheet
-
-
-class FakeWorksheet:
-    def __init__(
-        self,
-        rows: list[list[Any]] | None = None,
-        *,
-        failure: str | None = None,
-    ) -> None:
-        self.rows = [list(row) for row in (rows or [])]
-        self.failure = failure
-        self.get_calls: list[dict[str, str]] = []
-        self.batch_update_calls: list[dict[str, Any]] = []
-        self.batch_clear_calls: list[list[str]] = []
-
-    def get(
-        self,
-        range_name: str,
-        *,
-        value_render_option: str,
-    ) -> list[list[Any]]:
-        self.get_calls.append(
-            {
-                "range_name": range_name,
-                "value_render_option": value_render_option,
-            }
-        )
-        if self.failure == "read":
-            raise RuntimeError("fake read failure")
-        return [list(row) for row in self.rows]
-
-    def batch_update(
-        self,
-        data: list[dict[str, Any]],
-        *,
-        value_input_option: str,
-    ) -> None:
-        if self.failure == "write":
-            raise RuntimeError("fake write failure")
-        self.batch_update_calls.append({"data": data, "value_input_option": value_input_option})
-        for update in data:
-            first_row, _ = _range_rows(update["range"])
-            for offset, row in enumerate(update["values"]):
-                self._set_row(first_row + offset, row)
-
-    def batch_clear(self, ranges: list[str]) -> None:
-        if self.failure == "clear":
-            raise RuntimeError("fake clear failure")
-        self.batch_clear_calls.append(ranges)
-        for range_name in ranges:
-            first_row, last_row = _range_rows(range_name)
-            for row_number in range(first_row, last_row + 1):
-                self._set_row(row_number, [])
-
-    def _set_row(self, row_number: int, values: list[Any]) -> None:
-        while len(self.rows) < row_number:
-            self.rows.append([])
-        self.rows[row_number - 1] = list(values)
-
-
 def _sheet_row(
     operation_id: int,
     sku: int | None,
@@ -325,8 +253,3 @@ def _sheet_row(
     marker: str = "",
 ) -> list[Any]:
     return [marker, "", operation_id, "", "", "", sku, "", count, *("" for _ in range(14))]
-
-
-def _range_rows(range_name: str) -> tuple[int, int]:
-    start, end = range_name.split(":")
-    return int(start[1:]), int(end[1:])

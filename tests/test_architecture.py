@@ -9,15 +9,9 @@ from typing import Any
 import pytest
 
 from ozon_to_google_sheets.config import ConfigError, load_config
-from ozon_to_google_sheets.models import (
-    Accrual,
-    AccrualPage,
-    AccrualType,
-    PostingAccrual,
-    parse_accrual_types,
-    parse_posting_accruals,
-)
+from ozon_to_google_sheets.models import AccrualPage, parse_accrual_types, parse_posting_accruals
 from ozon_to_google_sheets.service import SyncService
+from tests.fakes import FakeOperationsSheet, FakeOzonGateway
 
 
 def test_package_imports_have_no_filesystem_side_effects(tmp_path: Path) -> None:
@@ -321,8 +315,8 @@ def test_service_orchestrates_new_operations() -> None:
             ]
         }
     )
-    ozon = FakeOzon(accruals, accrual_types, posting_accruals)
-    sheet = FakeSheet()
+    ozon = FakeOzonGateway(accruals, accrual_types, posting_accruals)
+    sheet = FakeOperationsSheet()
     endpoint = "https://example.invalid/v1/finance/accrual/by-day"
     service = SyncService(
         ozon=ozon,
@@ -347,8 +341,8 @@ def test_service_orchestrates_new_operations() -> None:
 
 
 def test_service_stops_before_sheet_upsert_when_ozon_response_is_empty() -> None:
-    ozon = FakeOzon((), (), ())
-    sheet = FakeSheet()
+    ozon = FakeOzonGateway()
+    sheet = FakeOperationsSheet()
     service = _service(ozon, sheet)
 
     assert service.run() == []
@@ -369,8 +363,8 @@ def test_service_upserts_existing_and_deduplicates_api_accruals() -> None:
             "last_id": "",
         }
     )
-    ozon = FakeOzon(page.accruals, (), ())
-    sheet = FakeSheet()
+    ozon = FakeOzonGateway(page.accruals)
+    sheet = FakeOperationsSheet()
     service = _service(ozon, sheet)
 
     assert service.run() == [42, 43]
@@ -382,53 +376,7 @@ def test_service_upserts_existing_and_deduplicates_api_accruals() -> None:
     assert [row[2] for row in sheet.rows] == [42, 43]
 
 
-class FakeOzon:
-    def __init__(
-        self,
-        accruals: tuple[Accrual, ...],
-        accrual_types: tuple[AccrualType, ...],
-        posting_accruals: tuple[PostingAccrual, ...],
-    ) -> None:
-        self._accruals = accruals
-        self._accrual_types = accrual_types
-        self._posting_accruals = posting_accruals
-        self.calls: list[tuple[Any, ...]] = []
-
-    def get_accruals(
-        self,
-        endpoint: str,
-        date_from: date,
-        date_to: date,
-    ) -> tuple[Accrual, ...]:
-        self.calls.append(("accruals", endpoint, date_from, date_to))
-        return self._accruals
-
-    def get_accrual_types(self, accrual_endpoint: str) -> tuple[AccrualType, ...]:
-        self.calls.append(("types", accrual_endpoint))
-        return self._accrual_types
-
-    def get_posting_accruals(
-        self,
-        accrual_endpoint: str,
-        posting_numbers: list[str],
-    ) -> tuple[PostingAccrual, ...]:
-        self.calls.append(("postings", accrual_endpoint, tuple(posting_numbers)))
-        return self._posting_accruals
-
-
-class FakeSheet:
-    def __init__(self) -> None:
-        self.rows: list[list[Any]] = []
-        self.operation_ids: list[int] = []
-        self.upsert_calls = 0
-
-    def upsert_rows(self, data: list[list[Any]]) -> None:
-        self.upsert_calls += 1
-        self.rows = data
-        self.operation_ids = list(dict.fromkeys(row[2] for row in data))
-
-
-def _service(ozon: FakeOzon, sheet: FakeSheet) -> SyncService:
+def _service(ozon: FakeOzonGateway, sheet: FakeOperationsSheet) -> SyncService:
     return SyncService(
         ozon=ozon,
         sheet=sheet,

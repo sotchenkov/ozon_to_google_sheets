@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
@@ -14,12 +13,13 @@ from ozon_to_google_sheets.ozon import (
     OzonRequestError,
     OzonResponseError,
 )
+from tests.fakes import FakeHTTPPost, FakeResponse
 
 ENDPOINT = "https://example.invalid/v1/finance/accrual/by-day"
 
 
 def test_client_fetches_inclusive_period_and_follows_last_id() -> None:
-    post = FakePost(
+    post = FakeHTTPPost(
         [
             FakeResponse(payload=_page([_accrual(1)], "cursor-1")),
             FakeResponse(payload=_page([_accrual(2)], "")),
@@ -40,7 +40,7 @@ def test_client_fetches_inclusive_period_and_follows_last_id() -> None:
 
 
 def test_client_rejects_repeated_pagination_cursor() -> None:
-    post = FakePost(
+    post = FakeHTTPPost(
         [
             FakeResponse(payload=_page([], "cursor-1")),
             FakeResponse(payload=_page([], "cursor-1")),
@@ -53,7 +53,7 @@ def test_client_rejects_repeated_pagination_cursor() -> None:
 
 
 def test_client_retries_only_temporary_failures_with_timeout() -> None:
-    post = FakePost(
+    post = FakeHTTPPost(
         [
             requests.Timeout("synthetic timeout"),
             FakeResponse(status_code=503, payload={"message": "temporary"}),
@@ -76,7 +76,7 @@ def test_client_retries_only_temporary_failures_with_timeout() -> None:
 
 
 def test_client_does_not_retry_authentication_error() -> None:
-    post = FakePost(
+    post = FakeHTTPPost(
         [FakeResponse(status_code=401, payload={"code": 7, "message": "invalid credentials"})]
     )
     client = OzonClient("token", "client", post=post, max_retries=2, sleep=no_sleep)
@@ -88,7 +88,9 @@ def test_client_does_not_retry_authentication_error() -> None:
 
 
 def test_client_limits_connection_retries() -> None:
-    post = FakePost([requests.ConnectionError("offline"), requests.ConnectionError("offline")])
+    post = FakeHTTPPost(
+        [requests.ConnectionError("offline"), requests.ConnectionError("offline")]
+    )
     client = OzonClient("token", "client", post=post, max_retries=1, sleep=no_sleep)
 
     with pytest.raises(OzonRequestError, match="failed after 2 attempts: ConnectionError"):
@@ -96,7 +98,7 @@ def test_client_limits_connection_retries() -> None:
 
 
 def test_client_reports_invalid_success_payload() -> None:
-    post = FakePost([FakeResponse(json_error=ValueError("not json"))])
+    post = FakeHTTPPost([FakeResponse(json_error=ValueError("not json"))])
     client = OzonClient("token", "client", post=post, sleep=no_sleep)
 
     with pytest.raises(OzonResponseError, match="is not valid JSON"):
@@ -104,7 +106,7 @@ def test_client_reports_invalid_success_payload() -> None:
 
 
 def test_client_fetches_types_and_batches_unique_postings() -> None:
-    post = FakePost(
+    post = FakeHTTPPost(
         [
             FakeResponse(
                 payload={
@@ -139,52 +141,11 @@ def test_client_fetches_types_and_batches_unique_postings() -> None:
 
 
 def test_client_skips_posting_request_for_empty_input() -> None:
-    post = FakePost([])
+    post = FakeHTTPPost([])
     client = OzonClient("token", "client", post=post, sleep=no_sleep)
 
     assert client.get_posting_accruals(ENDPOINT, []) == ()
     assert post.calls == []
-
-
-class FakeResponse:
-    def __init__(
-        self,
-        *,
-        status_code: int = 200,
-        payload: object | None = None,
-        json_error: ValueError | None = None,
-    ) -> None:
-        self.status_code = status_code
-        self._payload = payload if payload is not None else {}
-        self._json_error = json_error
-        self.text = "synthetic response"
-
-    def json(self) -> object:
-        if self._json_error is not None:
-            raise self._json_error
-        return self._payload
-
-
-class FakePost:
-    def __init__(self, outcomes: list[FakeResponse | requests.RequestException]) -> None:
-        self._outcomes = iter(outcomes)
-        self.calls: list[dict[str, Any]] = []
-
-    def __call__(
-        self,
-        url: str,
-        *,
-        headers: Mapping[str, str],
-        json: Mapping[str, Any],
-        timeout: float,
-    ) -> FakeResponse:
-        self.calls.append(
-            {"url": url, "headers": dict(headers), "json": dict(json), "timeout": timeout}
-        )
-        outcome = next(self._outcomes)
-        if isinstance(outcome, requests.RequestException):
-            raise outcome
-        return outcome
 
 
 def _page(accruals: list[dict[str, Any]], last_id: str) -> dict[str, Any]:
