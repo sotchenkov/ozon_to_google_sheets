@@ -12,7 +12,10 @@ from ozon_to_google_sheets.google_sheets import (
     GoogleSheetsError,
     GoogleSheetsSchemaError,
 )
-from ozon_to_google_sheets.models import LEGACY_TRANSACTION_COLUMNS
+from ozon_to_google_sheets.models import (
+    LEGACY_TRANSACTION_COLUMNS,
+    USER_TRANSACTION_SHEET_HEADER,
+)
 from tests.fakes import FakeGspreadClient, FakeWorksheet
 
 
@@ -55,7 +58,7 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
     assert auth_calls == [(credential_source, expected_credentials)]
     assert client.spreadsheet_ids == ["spreadsheet-for-test"]
     assert client.worksheet_ids == [0]
-    assert adapter.get_operation_references() == []
+    assert adapter.get_operation_ids() == []
 
 
 def test_connect_wraps_google_errors_without_credentials(
@@ -123,13 +126,13 @@ def test_empty_sheet_writes_header_and_every_product_in_one_batch() -> None:
     GoogleSheetsAdapter(worksheet).upsert_rows(rows)
 
     assert worksheet.get_calls == [
-        {"range_name": "A1:W", "value_render_option": "UNFORMATTED_VALUE"}
+        {"range_name": "A1:X", "value_render_option": "UNFORMATTED_VALUE"}
     ]
     assert worksheet.batch_update_calls == [
         {
             "data": [
                 {
-                    "range": "A1:W3",
+                    "range": "A1:X3",
                     "values": [list(SHEET_HEADER), *rows],
                 }
             ],
@@ -161,8 +164,8 @@ def test_upsert_preserves_partial_rows_and_appends_after_last_used_row() -> None
     assert worksheet.batch_update_calls == [
         {
             "data": [
-                {"range": "A3:W3", "values": [updated]},
-                {"range": "A6:W6", "values": [appended]},
+                {"range": "A3:X3", "values": [updated]},
+                {"range": "A6:X6", "values": [appended]},
             ],
             "value_input_option": "RAW",
         }
@@ -184,18 +187,18 @@ def test_upsert_clears_duplicates_and_stale_products_idempotently() -> None:
 
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A2:W2", "values": [incoming]}],
+            "data": [{"range": "A2:X2", "values": [incoming]}],
             "value_input_option": "RAW",
         }
     ]
-    assert worksheet.batch_clear_calls == [["A3:W4"]]
+    assert worksheet.batch_clear_calls == [["A3:X4"]]
     assert worksheet.rows[4] == unrelated
 
     adapter.upsert_rows([incoming])
 
     assert len(worksheet.batch_update_calls) == 1
     assert len(worksheet.batch_clear_calls) == 1
-    assert adapter.get_operation_references() == ["42", "43"]
+    assert adapter.get_operation_ids() == ["42", "43"]
 
 
 def test_upsert_groups_disjoint_duplicate_and_stale_ranges() -> None:
@@ -208,7 +211,7 @@ def test_upsert_groups_disjoint_duplicate_and_stale_ranges() -> None:
     GoogleSheetsAdapter(worksheet).upsert_rows([current])
 
     assert worksheet.batch_update_calls == []
-    assert worksheet.batch_clear_calls == [["A3:W3", "A5:W5"]]
+    assert worksheet.batch_clear_calls == [["A3:X3", "A5:X5"]]
 
 
 def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
@@ -219,13 +222,13 @@ def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
             _sheet_row(43, 1002),
         ]
     )
-    worksheet.rows[1][2] = 42.0
-    worksheet.rows[1][5] = 1001.0
+    worksheet.rows[1][0] = 42.0
+    worksheet.rows[1][6] = 1001.0
 
     adapter = GoogleSheetsAdapter(worksheet)
     adapter.upsert_rows([_sheet_row(42, 1001)])
 
-    assert adapter.get_operation_references() == ["42", "43"]
+    assert adapter.get_operation_ids() == ["42", "43"]
     assert worksheet.batch_update_calls == []
 
 
@@ -237,7 +240,7 @@ def test_partial_matching_header_is_completed() -> None:
 
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A1:W1", "values": [list(SHEET_HEADER)]}],
+            "data": [{"range": "A1:X1", "values": [list(SHEET_HEADER)]}],
             "value_input_option": "RAW",
         }
     ]
@@ -261,9 +264,11 @@ def test_mismatched_header_stops_before_writing() -> None:
     (
         list(LEGACY_TRANSACTION_COLUMNS),
         list(LEGACY_TRANSACTION_COLUMNS[:4]),
+        list(USER_TRANSACTION_SHEET_HEADER),
+        list(USER_TRANSACTION_SHEET_HEADER[:4]),
     ),
 )
-def test_legacy_english_header_requires_explicit_lossless_migration(
+def test_legacy_header_without_accrual_id_requires_explicit_migration(
     legacy_header: list[str],
 ) -> None:
     old_row = [
@@ -283,9 +288,9 @@ def test_legacy_english_header_requires_explicit_lossless_migration(
 
     with pytest.raises(
         GoogleSheetsSchemaError,
-        match="legacy English header.*Back up the worksheet.*GOOGLE_WORKSHEET_ID",
+        match="legacy 23-column header.*Back up the worksheet.*GOOGLE_WORKSHEET_ID",
     ):
-        GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row("posting-42", 1001)])
+        GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row(42, 1001)])
 
     assert worksheet.rows == original_rows
     assert worksheet.batch_update_calls == []
@@ -295,10 +300,10 @@ def test_legacy_english_header_requires_explicit_lossless_migration(
 @pytest.mark.parametrize(
     ("row", "message"),
     (
-        (["too", "short"], "has 2 columns; expected 23"),
+        (["too", "short"], "has 2 columns; expected 24"),
         (
-            ["", "", "", *("" for _ in range(20))],
-            "must contain a posting number or service ID",
+            ["", *("" for _ in range(23))],
+            "must contain an operation_id",
         ),
     ),
 )
@@ -349,50 +354,36 @@ def test_batch_clear_errors_have_clear_context() -> None:
         GoogleSheetsAdapter(worksheet).upsert_rows([row])
 
 
-def test_same_reference_on_other_dates_or_types_is_not_reconciled() -> None:
-    current = _sheet_row("shared-reference", 1001, marker="old")
-    stale = _sheet_row("shared-reference", 9999, marker="stale")
-    other_date = _sheet_row(
-        "shared-reference",
-        2002,
-        operation_date="2026-08-22",
-        marker="other-date",
-    )
-    other_type = _sheet_row(
-        "shared-reference",
-        3003,
-        operation_type="RETURN",
-        marker="other-type",
-    )
-    worksheet = FakeWorksheet([list(SHEET_HEADER), current, stale, other_date, other_type])
-    incoming = _sheet_row("shared-reference", 1001, marker="updated")
+def test_distinct_accrual_ids_with_the_same_visible_values_do_not_collide() -> None:
+    first = _sheet_row(42, 1001, posting_reference="shared-reference")
+    second = _sheet_row(43, 1001, posting_reference="shared-reference")
+    worksheet = FakeWorksheet()
+    adapter = GoogleSheetsAdapter(worksheet)
 
-    GoogleSheetsAdapter(worksheet).upsert_rows([incoming])
+    adapter.upsert_rows([first, second])
+    adapter.upsert_rows([first, second])
 
-    assert worksheet.batch_update_calls == [
-        {
-            "data": [{"range": "A2:W2", "values": [incoming]}],
-            "value_input_option": "RAW",
-        }
-    ]
-    assert worksheet.batch_clear_calls == [["A3:W3"]]
-    assert worksheet.rows[3] == other_date
-    assert worksheet.rows[4] == other_type
+    assert worksheet.rows == [list(SHEET_HEADER), first, second]
+    assert len(worksheet.batch_update_calls) == 1
+    assert worksheet.batch_clear_calls == []
+    assert adapter.get_operation_ids() == ["42", "43"]
 
 
 def _sheet_row(
-    operation_reference: int | str,
+    operation_id: int,
     sku: int | None,
     *,
     count: int = 0,
     marker: str = "",
     operation_date: str = "2026-08-23",
     operation_type: str = "POSTING",
+    posting_reference: str = "posting-for-test",
 ) -> list[Any]:
     return [
+        operation_id,
         operation_date,
         operation_type,
-        operation_reference,
+        posting_reference,
         "",
         "",
         sku,

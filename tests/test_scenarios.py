@@ -35,6 +35,7 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert row.amount == Decimal("82.50")
 
     sheet_values = dict(zip(TRANSACTION_SHEET_HEADER, row.as_list(), strict=True))
+    assert sheet_values["ID операции"] == 910001
     assert sheet_values["Дата начисления"] == "2026-08-20"
     assert sheet_values["Тип начисления"] == "POSTING"
     assert sheet_values["Номер отправления или идентификатор услуги"] == "posting-test-0001"

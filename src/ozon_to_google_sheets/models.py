@@ -33,7 +33,7 @@ LEGACY_TRANSACTION_COLUMNS = (
     "amount",
 )
 
-TRANSACTION_SHEET_SCHEMA = (
+USER_TRANSACTION_SHEET_SCHEMA = (
     ("operation_date", "Дата начисления"),
     ("operation_type_name", "Тип начисления"),
     ("posting_number", "Номер отправления или идентификатор услуги"),
@@ -64,8 +64,13 @@ TRANSACTION_SHEET_SCHEMA = (
     ("reverse_logistics", "Обратная логистика"),
     ("amount", "Итого"),
 )
+TRANSACTION_SHEET_SCHEMA = (
+    ("operation_id", "ID операции"),
+    *USER_TRANSACTION_SHEET_SCHEMA,
+)
 TRANSACTION_COLUMNS = tuple(column for column, _ in TRANSACTION_SHEET_SCHEMA)
 TRANSACTION_SHEET_HEADER = tuple(header for _, header in TRANSACTION_SHEET_SCHEMA)
+USER_TRANSACTION_SHEET_HEADER = tuple(header for _, header in USER_TRANSACTION_SHEET_SCHEMA)
 
 
 class OzonPayloadError(ValueError):

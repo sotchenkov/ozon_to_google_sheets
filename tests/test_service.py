@@ -29,7 +29,8 @@ def test_service_skips_type_catalogue_for_fee_free_product(
     assert [call[0] for call in ozon.calls] == ["accruals", "postings"]
     assert ozon.calls[1] == ("postings", ENDPOINT, ("posting-test-0001",))
     assert sheet.upsert_calls == 1
-    assert sheet.rows[0][2] == "posting-test-0001"
+    assert sheet.rows[0][0] == 910001
+    assert sheet.rows[0][3] == "posting-test-0001"
 
 
 def test_service_fetches_catalogue_and_postings_only_when_required(
@@ -43,8 +44,8 @@ def test_service_fetches_catalogue_and_postings_only_when_required(
     _service(ozon, sheet).run()
 
     assert [call[0] for call in ozon.calls] == ["accruals", "types", "postings"]
-    assert sheet.rows[0][20] == -5.0
-    assert sheet.rows[0][21] == -9.0
+    assert sheet.rows[0][21] == -5.0
+    assert sheet.rows[0][22] == -9.0
 
 
 def test_service_deduplication_keeps_latest_payload(
@@ -62,7 +63,7 @@ def test_service_deduplication_keeps_latest_payload(
 
     assert operation_ids == [910001]
     assert len(sheet.rows) == 1
-    assert sheet.rows[0][22] == 99.25
+    assert sheet.rows[0][23] == 99.25
 
 
 def test_service_stops_before_sheet_when_type_request_fails(
