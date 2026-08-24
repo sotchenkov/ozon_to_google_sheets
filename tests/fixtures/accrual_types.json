@@ -1,0 +1,9 @@
+{
+  "accrual_types": [
+    {"id": 501, "name": "Logistic", "description": "Synthetic logistics fee"},
+    {"id": 502, "name": "LastMileCourier", "description": "Synthetic last-mile fee"},
+    {"id": 503, "name": "Cancellation", "description": "Synthetic cancellation fee"},
+    {"id": 504, "name": "ReturnFlowLogistic", "description": "Synthetic return fee"},
+    {"id": 505, "name": "PickUpPointReturnAcceptance", "description": "Synthetic refund fee"}
+  ]
+}

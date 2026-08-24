@@ -1,0 +1,25 @@
+{
+  "posting_accruals": [
+    {
+      "posting_number": "posting-test-0002",
+      "accruals": [
+        {
+          "sku": 100002,
+          "quantity": 3,
+          "type_id": 501,
+          "accrual_date": "2026-08-20",
+          "accrued": {"amount": "-15.00", "currency": "RUB"},
+          "seller_price": {"amount": "100.00", "currency": "RUB"}
+        },
+        {
+          "sku": 100003,
+          "quantity": 2,
+          "type_id": 501,
+          "accrual_date": "2026-08-20",
+          "accrued": {"amount": "-12.00", "currency": "RUB"},
+          "seller_price": {"amount": "150.00", "currency": "RUB"}
+        }
+      ]
+    }
+  ]
+}

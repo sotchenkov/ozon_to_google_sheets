@@ -1,0 +1,22 @@
+{
+  "accruals": [
+    {
+      "accrual_id": 910030,
+      "accrued_category": "ITEM",
+      "date": "2026-08-22",
+      "unit_number": "posting-test-0030",
+      "total_amount": {"amount": "-18.00", "currency": "RUB"},
+      "item_fees": {
+        "fees": [
+          {
+            "sku": 100030,
+            "fees": [
+              {"type_id": 505, "accrued": {"amount": "-18.00", "currency": "RUB"}}
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "last_id": ""
+}
