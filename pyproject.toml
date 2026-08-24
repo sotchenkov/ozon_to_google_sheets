@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "Export Ozon seller finance transactions to Google Sheets"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+authors = [{ name = "Alexey Sotchenkov" }]
+license = "Elastic-2.0"
+license-files = ["LICENSE", "NOTICE"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
@@ -27,6 +28,11 @@ dependencies = [
 
 [project.scripts]
 ozon-to-google-sheets = "ozon_to_google_sheets.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sotchenkov/ozon_to_google_sheets"
+Repository = "https://github.com/sotchenkov/ozon_to_google_sheets"
+"Commercial support" = "https://t.me/sotchenkov"
 
 [dependency-groups]
 dev = [
