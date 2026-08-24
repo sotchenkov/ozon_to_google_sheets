@@ -195,12 +195,27 @@ def test_connect_requires_exactly_one_credential_source(
         )
 
 
-def test_empty_upsert_does_not_read_or_write_sheet() -> None:
+def test_empty_upsert_initializes_header() -> None:
     worksheet = FakeWorksheet()
 
     GoogleSheetsAdapter(worksheet).upsert_rows([])
 
-    assert worksheet.get_calls == []
+    assert worksheet.get_calls == [
+        {"range_name": "A1:P", "value_render_option": "UNFORMATTED_VALUE"}
+    ]
+    assert worksheet.batch_update_calls == [
+        {
+            "data": [{"range": "A1:P1", "values": [list(SHEET_HEADER)]}],
+            "value_input_option": "RAW",
+        }
+    ]
+
+
+def test_schema_check_does_not_rewrite_existing_header() -> None:
+    worksheet = FakeWorksheet([list(SHEET_HEADER)])
+
+    GoogleSheetsAdapter(worksheet).ensure_schema()
+
     assert worksheet.batch_update_calls == []
 
 

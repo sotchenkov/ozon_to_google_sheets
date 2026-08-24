@@ -97,6 +97,20 @@ def test_service_propagates_sheet_failure_after_fetching_data(
     assert sheet.upsert_calls == 1
 
 
+def test_service_stops_before_ozon_when_sheet_schema_is_invalid() -> None:
+    ozon = FakeOzonGateway()
+    sheet = FakeOperationsSheet(
+        schema_failure=RuntimeError("synthetic schema failure"),
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic schema failure"):
+        _service(ozon, sheet).run()
+
+    assert sheet.ensure_schema_calls == 1
+    assert sheet.upsert_calls == 0
+    assert ozon.calls == []
+
+
 def test_service_commits_each_backfill_day_independently(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:

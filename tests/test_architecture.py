@@ -346,6 +346,7 @@ def test_service_stops_before_sheet_upsert_when_ozon_response_is_empty() -> None
 
     assert service.run() == []
     assert ozon.calls == [("accruals", service.endpoint, service.date_from, service.date_to)]
+    assert sheet.ensure_schema_calls == 1
     assert sheet.upsert_calls == 0
 
 

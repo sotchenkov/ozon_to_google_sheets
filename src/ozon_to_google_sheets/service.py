@@ -30,6 +30,8 @@ class OzonGateway(Protocol):
 
 
 class OperationsSheet(Protocol):
+    def ensure_schema(self) -> None: ...
+
     def upsert_rows(self, data: list[list[Any]]) -> None: ...
 
 
@@ -50,6 +52,7 @@ class SyncService:
         accrual_types: tuple[AccrualType, ...] | None = None
         completed_through: date | None = None
 
+        self.sheet.ensure_schema()
         for current_day in _date_range(self.date_from, self.date_to):
             try:
                 day_ids, accrual_types = self._sync_day(

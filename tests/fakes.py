@@ -191,12 +191,24 @@ class FakeOzonGateway:
 class FakeOperationsSheet:
     """Recording sheet gateway used by the synchronization service."""
 
-    def __init__(self, *, failure: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        failure: Exception | None = None,
+        schema_failure: Exception | None = None,
+    ) -> None:
         self.failure = failure
+        self.schema_failure = schema_failure
         self.rows: list[list[Any]] = []
         self.operation_ids: list[int] = []
         self.upsert_batches: list[list[list[Any]]] = []
         self.upsert_calls = 0
+        self.ensure_schema_calls = 0
+
+    def ensure_schema(self) -> None:
+        self.ensure_schema_calls += 1
+        if self.schema_failure is not None:
+            raise self.schema_failure
 
     def upsert_rows(self, data: list[list[Any]]) -> None:
         self.upsert_calls += 1

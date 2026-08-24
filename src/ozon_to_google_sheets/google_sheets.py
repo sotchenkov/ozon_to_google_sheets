@@ -151,8 +151,17 @@ class GoogleSheetsAdapter:
             if (operation_id := _operation_id(row))
         ]
 
+    def ensure_schema(self) -> None:
+        sheet_values = self._read_values()
+        header = sheet_values[0] if sheet_values else []
+        if _header_needs_update(header):
+            self._write_updates(
+                [{"range": f"A1:{LAST_COLUMN}1", "values": [list(SHEET_HEADER)]}]
+            )
+
     def upsert_rows(self, data: list[list[Any]]) -> None:
         if not data:
+            self.ensure_schema()
             return
 
         incoming_rows = _index_incoming_rows(data)
@@ -195,12 +204,7 @@ class GoogleSheetsAdapter:
 
         updates = _build_update_ranges(replacements)
         if updates:
-            try:
-                self._worksheet.batch_update(updates, value_input_option="RAW")
-            except Exception as error:
-                message = "Could not write transaction rows to Google Sheets"
-                self._logger.exception(message)
-                raise GoogleSheetsError(message) from error
+            self._write_updates(updates)
 
         for operation_id in sorted(incoming_operation_ids):
             self._logger.info("Operation %s synchronized with Google Sheets", operation_id)
@@ -216,6 +220,14 @@ class GoogleSheetsAdapter:
             self._logger.exception(message)
             raise GoogleSheetsError(message) from error
         return [list(row) for row in values]
+
+    def _write_updates(self, updates: Sequence[dict[str, Any]]) -> None:
+        try:
+            self._worksheet.batch_update(updates, value_input_option="RAW")
+        except Exception as error:
+            message = "Could not write transaction rows to Google Sheets"
+            self._logger.exception(message)
+            raise GoogleSheetsError(message) from error
 
 
 def _index_incoming_rows(data: Sequence[list[Any]]) -> dict[RowKey, list[Any]]:
