@@ -333,10 +333,10 @@ def test_service_orchestrates_new_operations() -> None:
         ("postings", endpoint, ("posting-for-test",)),
     ]
     assert sheet.operation_ids == [42]
-    assert len(sheet.rows[0]) == 24
+    assert len(sheet.rows[0]) == 20
     assert sheet.rows[0][0] == 42
     assert sheet.rows[0][3] == "posting-for-test"
-    assert sheet.rows[0][9] == 2
+    assert sheet.rows[0][5] == 2
 
 
 def test_service_stops_before_sheet_upsert_when_ozon_response_is_empty() -> None:

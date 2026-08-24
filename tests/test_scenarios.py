@@ -39,11 +39,7 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert sheet_values["Дата начисления"] == "2026-08-20"
     assert sheet_values["Тип начисления"] == "POSTING"
     assert sheet_values["Номер отправления или идентификатор услуги"] == "posting-test-0001"
-    assert sheet_values["Дата принятия заказа в обработку или оказания услуги"] == ""
-    assert sheet_values["Склад отгрузки"] == ""
     assert sheet_values["SKU"] == 100001
-    assert sheet_values["Артикул"] == ""
-    assert sheet_values["Название товара или услуги"] == ""
     assert sheet_values["Количество"] == 1
     assert sheet_values["За продажу или возврат до вычета комиссий и услуг"] == 100.0
     assert sheet_values["Ставка комиссии"] == "12.5%"

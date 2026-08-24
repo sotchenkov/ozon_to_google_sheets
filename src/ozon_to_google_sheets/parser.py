@@ -88,9 +88,6 @@ class AccrualTransformer:
     ) -> TransactionRow:
         operation_date = accrual.date[:10]
         count = quantities.get((accrual.unit_number, sku), 1) if sku is not None else 0
-        # The current finance responses do not contain an exact order/service
-        # date, warehouse, seller article, or name. Their sheet fields stay
-        # blank instead of being filled with semantically different values.
         return TransactionRow(
             operation_date=operation_date,
             operation_type_name=accrual.accrued_category,

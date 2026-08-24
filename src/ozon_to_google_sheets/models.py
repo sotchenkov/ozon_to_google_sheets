@@ -33,15 +33,37 @@ LEGACY_TRANSACTION_COLUMNS = (
     "amount",
 )
 
+LEGACY_USER_TRANSACTION_SHEET_HEADER = (
+    "Дата начисления",
+    "Тип начисления",
+    "Номер отправления или идентификатор услуги",
+    "Дата принятия заказа в обработку или оказания услуги",
+    "Склад отгрузки",
+    "SKU",
+    "Артикул",
+    "Название товара или услуги",
+    "Количество",
+    "За продажу или возврат до вычета комиссий и услуг",
+    "Ставка комиссии",
+    "Комиссия за продажу",
+    "Сборка заказа",
+    "Обработка отправления",
+    "Магистраль",
+    "Последняя миля",
+    "Обратная магистраль",
+    "Обработка возврата",
+    "Обработка отменённого или невостребованного товара",
+    "Обработка невыкупленного товара",
+    "Логистика",
+    "Обратная логистика",
+    "Итого",
+)
+
 USER_TRANSACTION_SHEET_SCHEMA = (
     ("operation_date", "Дата начисления"),
     ("operation_type_name", "Тип начисления"),
     ("posting_number", "Номер отправления или идентификатор услуги"),
-    ("order_date", "Дата принятия заказа в обработку или оказания услуги"),
-    ("warehouse_name", "Склад отгрузки"),
     ("sku", "SKU"),
-    ("offer_id", "Артикул"),
-    ("name", "Название товара или услуги"),
     ("count", "Количество"),
     (
         "accruals_for_sale",
@@ -360,11 +382,7 @@ class TransactionRow:
     operation_date: str = ""
     operation_type_name: str = ""
     posting_number: str = ""
-    order_date: str = ""
-    warehouse_name: str = ""
     sku: int | None = None
-    offer_id: str = ""
-    name: str = ""
     count: int = 0
     accruals_for_sale: Decimal = Decimal("0")
     sale_commission_percents: str = ""

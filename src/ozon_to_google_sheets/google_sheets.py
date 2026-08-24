@@ -11,6 +11,7 @@ import gspread
 
 from .models import (
     LEGACY_TRANSACTION_COLUMNS,
+    LEGACY_USER_TRANSACTION_SHEET_HEADER,
     TRANSACTION_COLUMNS,
     TRANSACTION_SHEET_HEADER,
     USER_TRANSACTION_SHEET_HEADER,
@@ -21,7 +22,7 @@ COLUMN_COUNT = len(SHEET_HEADER)
 OPERATION_ID_INDEX = TRANSACTION_COLUMNS.index("operation_id")
 SKU_INDEX = TRANSACTION_COLUMNS.index("sku")
 FIRST_DATA_ROW = 2
-LAST_COLUMN = "X"
+LAST_COLUMN = "T"
 SHEET_RANGE = f"A1:{LAST_COLUMN}"
 RowKey = tuple[str, str]
 
@@ -205,10 +206,9 @@ def _index_existing_rows(values: Sequence[Sequence[Any]]) -> dict[RowKey, list[i
 def _header_needs_update(header: Sequence[Any]) -> bool:
     if _matches_legacy_header(header):
         raise GoogleSheetsSchemaError(
-            "Worksheet uses a legacy 23-column header without accrual_id. Automatic "
-            "migration is unsafe because distinct accruals can have the same visible "
-            "values. Back up the worksheet, create a new empty worksheet, and set "
-            "GOOGLE_WORKSHEET_ID to its gid."
+            "Worksheet uses a legacy transaction header. Automatic migration is "
+            "unsafe because the old columns can contain data. Back up the worksheet, "
+            "create a new empty worksheet, and set GOOGLE_WORKSHEET_ID to its gid."
         )
 
     needs_update = len(header) < COLUMN_COUNT
@@ -232,9 +232,13 @@ def _operation_id(row: Sequence[Any]) -> str:
 
 
 def _matches_legacy_header(header: Sequence[Any]) -> bool:
-    return _matches_header(header, LEGACY_TRANSACTION_COLUMNS) or _matches_header(
-        header, USER_TRANSACTION_SHEET_HEADER
+    legacy_headers = (
+        LEGACY_TRANSACTION_COLUMNS,
+        LEGACY_USER_TRANSACTION_SHEET_HEADER,
+        USER_TRANSACTION_SHEET_HEADER,
+        ("ID операции", *LEGACY_USER_TRANSACTION_SHEET_HEADER),
     )
+    return any(_matches_header(header, expected) for expected in legacy_headers)
 
 
 def _matches_header(header: Sequence[Any], expected_header: Sequence[str]) -> bool:

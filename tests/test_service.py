@@ -44,8 +44,8 @@ def test_service_fetches_catalogue_and_postings_only_when_required(
     _service(ozon, sheet).run()
 
     assert [call[0] for call in ozon.calls] == ["accruals", "types", "postings"]
-    assert sheet.rows[0][21] == -5.0
-    assert sheet.rows[0][22] == -9.0
+    assert sheet.rows[0][17] == -5.0
+    assert sheet.rows[0][18] == -9.0
 
 
 def test_service_deduplication_keeps_latest_payload(
@@ -63,7 +63,7 @@ def test_service_deduplication_keeps_latest_payload(
 
     assert operation_ids == [910001]
     assert len(sheet.rows) == 1
-    assert sheet.rows[0][23] == 99.25
+    assert sheet.rows[0][19] == 99.25
 
 
 def test_service_stops_before_sheet_when_type_request_fails(
