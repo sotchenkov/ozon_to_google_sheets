@@ -3,12 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import date
-from decimal import Decimal
 from typing import Any
 
 import pytest
 
-from ozon_to_google_sheets.models import AccrualPage, Money, parse_accrual_types
+from ozon_to_google_sheets.models import AccrualPage, parse_accrual_types
 from ozon_to_google_sheets.service import SyncService
 from tests.fakes import FakeOperationsSheet, FakeOzonGateway
 
@@ -44,8 +43,8 @@ def test_service_fetches_catalogue_and_postings_only_when_required(
     _service(ozon, sheet).run()
 
     assert [call[0] for call in ozon.calls] == ["accruals", "types", "postings"]
-    assert sheet.rows[0][17] == -5.0
-    assert sheet.rows[0][18] == -9.0
+    assert sheet.rows[0][12] == -5.0
+    assert sheet.rows[0][13] == -9.0
 
 
 def test_service_deduplication_keeps_latest_payload(
@@ -54,7 +53,7 @@ def test_service_deduplication_keeps_latest_payload(
     original = AccrualPage.from_api(load_json_fixture("ordinary_operation.json")).accruals[0]
     corrected = replace(
         original,
-        total_amount=Money(Decimal("99.25"), "RUB"),
+        accrued_category="CORRECTED",
     )
     ozon = FakeOzonGateway((original, corrected))
     sheet = FakeOperationsSheet()
@@ -63,7 +62,8 @@ def test_service_deduplication_keeps_latest_payload(
 
     assert operation_ids == [910001]
     assert len(sheet.rows) == 1
-    assert sheet.rows[0][19] == 99.25
+    assert sheet.rows[0][2] == "CORRECTED"
+    assert sheet.rows[0][15] == 82.5
 
 
 def test_service_stops_before_sheet_when_type_request_fails(

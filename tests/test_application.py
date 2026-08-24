@@ -12,7 +12,7 @@ import pytest
 from ozon_to_google_sheets import application
 from ozon_to_google_sheets.config import AppConfig, ConfigError
 from ozon_to_google_sheets.google_sheets import GoogleSheetsError
-from ozon_to_google_sheets.models import OzonPayloadError
+from ozon_to_google_sheets.models import AccrualIntegrityError, OzonPayloadError
 from ozon_to_google_sheets.ozon import OzonRequestError
 
 
@@ -113,6 +113,7 @@ def test_main_reports_configuration_error_without_running(
         OzonRequestError("synthetic Ozon failure"),
         GoogleSheetsError("synthetic Google Sheets failure"),
         OzonPayloadError("synthetic payload failure"),
+        AccrualIntegrityError("synthetic accrual mismatch"),
         OSError("synthetic filesystem failure"),
     ),
 )

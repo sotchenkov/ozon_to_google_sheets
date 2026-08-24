@@ -28,10 +28,11 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert row.operation_date == "2026-08-20"
     assert row.posting_number == "posting-test-0001"
     assert row.sku == 100001
-    assert row.count == 1
+    assert row.count is None
     assert row.accruals_for_sale == Decimal("100.00")
     assert row.sale_commission_percents == "12.5%"
     assert row.sale_commission == Decimal("-12.50")
+    assert row.other_accruals == Decimal("-5.00")
     assert row.amount == Decimal("82.50")
 
     sheet_values = dict(zip(TRANSACTION_SHEET_HEADER, row.as_list(), strict=True))
@@ -40,7 +41,7 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert sheet_values["Тип начисления"] == "POSTING"
     assert sheet_values["Номер отправления или идентификатор услуги"] == "posting-test-0001"
     assert sheet_values["SKU"] == 100001
-    assert sheet_values["Количество"] == 1
+    assert sheet_values["Количество"] is None
     assert sheet_values["За продажу или возврат до вычета комиссий и услуг"] == 100.0
     assert sheet_values["Ставка комиссии"] == "12.5%"
     assert sheet_values["Комиссия за продажу"] == -12.5
@@ -57,8 +58,8 @@ def test_multiple_products_keep_quantities_and_parent_total_once(
 
     assert [row.sku for row in rows] == [100002, 100003]
     assert [row.count for row in rows] == [3, 2]
-    assert [row.amount for row in rows] == [Decimal("230.00"), Decimal("0")]
-    assert sum(row.amount for row in rows) == Decimal("230.00")
+    assert [row.amount for row in rows] == [Decimal("228.00"), Decimal("0")]
+    assert sum(row.amount for row in rows) == Decimal("228.00")
 
 
 def test_commissions_and_services_map_to_stable_sheet_columns(
@@ -113,7 +114,7 @@ def test_missing_optional_fields_receive_documented_defaults(
     assert rows[0].operation_id == 910040
     assert rows[0].posting_number == "910040"
     assert rows[0].sku is None
-    assert rows[0].count == 0
+    assert rows[0].count is None
     assert rows[0].amount == Decimal("0")
 
 

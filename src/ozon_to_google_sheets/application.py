@@ -9,7 +9,7 @@ from typing import TextIO
 from .config import AppConfig, ConfigError, load_config
 from .google_sheets import GoogleSheetsAdapter, GoogleSheetsError
 from .logging import configure_file_logging
-from .models import OzonPayloadError
+from .models import AccrualIntegrityError, OzonPayloadError
 from .ozon import OzonClient, OzonRequestError
 from .service import SyncService
 
@@ -20,6 +20,7 @@ EXIT_CONFIGURATION_ERROR = 2
 
 EXPECTED_RUNTIME_ERRORS = (
     GoogleSheetsError,
+    AccrualIntegrityError,
     OSError,
     OzonPayloadError,
     OzonRequestError,

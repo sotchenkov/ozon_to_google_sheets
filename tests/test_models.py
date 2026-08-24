@@ -149,15 +149,15 @@ def test_transaction_row_converts_exact_money_for_sheet_transport() -> None:
 
     values = row.as_list()
 
-    assert len(values) == 20
+    assert len(values) == 16
     assert values[6] == 10.2
-    assert values[19] == 9.1
+    assert values[15] == 9.1
 
 
 def test_transaction_columns_match_the_row_model() -> None:
     model_fields = tuple(field.name for field in fields(TransactionRow))
 
-    assert len(TRANSACTION_COLUMNS) == 20
+    assert len(TRANSACTION_COLUMNS) == 16
     assert all(column in model_fields for column in TRANSACTION_COLUMNS)
     assert TRANSACTION_COLUMNS[0] == "operation_id"
 
@@ -173,21 +173,17 @@ def test_transaction_sheet_header_is_the_exact_russian_user_schema() -> None:
         "За продажу или возврат до вычета комиссий и услуг",
         "Ставка комиссии",
         "Комиссия за продажу",
-        "Сборка заказа",
-        "Обработка отправления",
-        "Магистраль",
         "Последняя миля",
-        "Обратная магистраль",
         "Обработка возврата",
         "Обработка отменённого или невостребованного товара",
-        "Обработка невыкупленного товара",
         "Логистика",
         "Обратная логистика",
+        "Прочие или неизвестные начисления",
         "Итого",
     )
     assert TRANSACTION_SHEET_HEADER[1:] == USER_TRANSACTION_SHEET_HEADER
-    assert len(USER_TRANSACTION_SHEET_HEADER) == 19
-    assert len(TRANSACTION_SHEET_HEADER) == len(TRANSACTION_COLUMNS) == 20
+    assert len(USER_TRANSACTION_SHEET_HEADER) == 15
+    assert len(TRANSACTION_SHEET_HEADER) == len(TRANSACTION_COLUMNS) == 16
 
 
 @pytest.mark.parametrize("amount", (True, [], "not-a-decimal"))

@@ -4,7 +4,14 @@ import logging
 from decimal import Decimal
 from typing import Any
 
-from ozon_to_google_sheets.models import AccrualPage, parse_accrual_types, parse_posting_accruals
+import pytest
+
+from ozon_to_google_sheets.models import (
+    AccrualIntegrityError,
+    AccrualPage,
+    parse_accrual_types,
+    parse_posting_accruals,
+)
 from ozon_to_google_sheets.parser import AccrualTransformer
 
 
@@ -17,7 +24,7 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
                     "accrued_category": "POSTING",
                     "date": "2026-08-23T12:00:00Z",
                     "unit_number": "posting-1",
-                    "total_amount": _money("150.00"),
+                    "total_amount": _money("133.00"),
                     "posting": {
                         "delivery_schema": "FBO",
                         "products": [
@@ -73,15 +80,19 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
 
     assert [row.sku for row in rows] == [1001, 2002]
     assert [row.count for row in rows] == [2, 3]
-    assert [row.amount for row in rows] == [Decimal("150.00"), Decimal("0")]
+    assert [row.amount for row in rows] == [Decimal("133.00"), Decimal("0")]
     assert rows[0].accruals_for_sale == Decimal("110.00")
     assert rows[0].sale_commission == Decimal("-11.00")
     assert rows[0].sale_commission_percents == "10%"
     assert rows[0].logistics == Decimal("-2.00")
     assert rows[0].last_mile == Decimal("-7.00")
     assert rows[0].reverse_logistics == Decimal("-5.00")
+    assert rows[0].other_accruals == Decimal("-9")
     assert rows[1].last_mile == Decimal("-2.00")
-    assert "Unmapped Ozon accrual type 99 (FutureOzonService)" in caplog.text
+    assert (
+        "Unmapped Ozon accrual type 99 (FutureOzonService) for operation 42 "
+        "was stored as other accruals"
+    ) in caplog.text
 
 
 def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
@@ -118,12 +129,64 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
 
     assert [row.operation_id for row in rows] == [41, 41, 43]
     assert [row.sku for row in rows] == [3001, 3002, None]
-    assert [row.count for row in rows] == [1, 1, 0]
+    assert [row.count for row in rows] == [None, None, None]
     assert rows[0].refund_processing == Decimal("-12.00")
     assert rows[0].amount == Decimal("-12.00")
     assert rows[1].amount == Decimal("0")
     assert rows[2].amount == Decimal("0")
     assert rows[2].as_list()[3] == "advertising-contract"
+
+
+def test_transformer_rejects_parent_total_mismatch() -> None:
+    accrual = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 44,
+                    "date": "2026-08-23",
+                    "total_amount": _money("9.00"),
+                    "non_item_fee": _fee(1, "-1.00"),
+                }
+            ]
+        }
+    ).accruals
+    types = parse_accrual_types({"accrual_types": [_type(1, "Logistic")]})
+
+    with pytest.raises(
+        AccrualIntegrityError,
+        match=r"operation 44 detail total -1\.00.*total_amount 9\.00.*difference 10\.00",
+    ):
+        AccrualTransformer().transform(accrual, types, ())
+
+
+def test_transformer_preserves_type_missing_from_catalogue(caplog: Any) -> None:
+    accrual = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 45,
+                    "date": "2026-08-23",
+                    "total_amount": _money("-3.50"),
+                    "non_item_fee": _fee(999, "-3.50"),
+                }
+            ]
+        }
+    ).accruals
+
+    with caplog.at_level(logging.WARNING):
+        rows = AccrualTransformer().transform(accrual, (), ())
+
+    assert rows[0].other_accruals == Decimal("-3.50")
+    assert "type 999 (unknown)" in caplog.text
+
+
+def test_transformer_rejects_conflicting_type_catalogue() -> None:
+    types = parse_accrual_types(
+        {"accrual_types": [_type(1, "Logistic"), _type(1, "FutureOzonService")]}
+    )
+
+    with pytest.raises(AccrualIntegrityError, match="type 1 has conflicting names"):
+        AccrualTransformer().transform((), types, ())
 
 
 def _money(amount: str) -> dict[str, str]:
@@ -158,7 +221,6 @@ def _product(
         },
         "delivery": {
             "services": [_fee(type_id, amount) for type_id, amount in services],
-            "total_accrued": _money("0"),
         },
     }
 

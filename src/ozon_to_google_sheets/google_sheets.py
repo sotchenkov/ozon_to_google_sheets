@@ -12,17 +12,27 @@ import gspread
 from .models import (
     LEGACY_TRANSACTION_COLUMNS,
     LEGACY_USER_TRANSACTION_SHEET_HEADER,
+    PREVIOUS_USER_TRANSACTION_SHEET_HEADER,
     TRANSACTION_COLUMNS,
     TRANSACTION_SHEET_HEADER,
     USER_TRANSACTION_SHEET_HEADER,
 )
+
+
+def _column_name(number: int) -> str:
+    name = ""
+    while number:
+        number, remainder = divmod(number - 1, 26)
+        name = chr(ord("A") + remainder) + name
+    return name
+
 
 SHEET_HEADER = TRANSACTION_SHEET_HEADER
 COLUMN_COUNT = len(SHEET_HEADER)
 OPERATION_ID_INDEX = TRANSACTION_COLUMNS.index("operation_id")
 SKU_INDEX = TRANSACTION_COLUMNS.index("sku")
 FIRST_DATA_ROW = 2
-LAST_COLUMN = "T"
+LAST_COLUMN = _column_name(COLUMN_COUNT)
 SHEET_RANGE = f"A1:{LAST_COLUMN}"
 RowKey = tuple[str, str]
 
@@ -238,7 +248,18 @@ def _matches_legacy_header(header: Sequence[Any]) -> bool:
         USER_TRANSACTION_SHEET_HEADER,
         ("ID операции", *LEGACY_USER_TRANSACTION_SHEET_HEADER),
     )
-    return any(_matches_header(header, expected) for expected in legacy_headers)
+    if any(_matches_header(header, expected) for expected in legacy_headers):
+        return True
+
+    previous_headers = (
+        PREVIOUS_USER_TRANSACTION_SHEET_HEADER,
+        ("ID операции", *PREVIOUS_USER_TRANSACTION_SHEET_HEADER),
+    )
+    return any(
+        len(header) > 8 + (expected[0] == "ID операции")
+        and _matches_header(header, expected)
+        for expected in previous_headers
+    )
 
 
 def _matches_header(header: Sequence[Any], expected_header: Sequence[str]) -> bool:

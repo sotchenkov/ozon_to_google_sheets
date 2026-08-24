@@ -59,6 +59,28 @@ LEGACY_USER_TRANSACTION_SHEET_HEADER = (
     "Итого",
 )
 
+PREVIOUS_USER_TRANSACTION_SHEET_HEADER = (
+    "Дата начисления",
+    "Тип начисления",
+    "Номер отправления или идентификатор услуги",
+    "SKU",
+    "Количество",
+    "За продажу или возврат до вычета комиссий и услуг",
+    "Ставка комиссии",
+    "Комиссия за продажу",
+    "Сборка заказа",
+    "Обработка отправления",
+    "Магистраль",
+    "Последняя миля",
+    "Обратная магистраль",
+    "Обработка возврата",
+    "Обработка отменённого или невостребованного товара",
+    "Обработка невыкупленного товара",
+    "Логистика",
+    "Обратная логистика",
+    "Итого",
+)
+
 USER_TRANSACTION_SHEET_SCHEMA = (
     ("operation_date", "Дата начисления"),
     ("operation_type_name", "Тип начисления"),
@@ -71,19 +93,15 @@ USER_TRANSACTION_SHEET_SCHEMA = (
     ),
     ("sale_commission_percents", "Ставка комиссии"),
     ("sale_commission", "Комиссия за продажу"),
-    ("order_assembly", "Сборка заказа"),
-    ("shipment_processing", "Обработка отправления"),
-    ("highway", "Магистраль"),
     ("last_mile", "Последняя миля"),
-    ("reverse_highway", "Обратная магистраль"),
     ("refund_processing", "Обработка возврата"),
     (
         "processing_of_cancelled_or_unclaimed_item",
         "Обработка отменённого или невостребованного товара",
     ),
-    ("processing_of_unbought_item", "Обработка невыкупленного товара"),
     ("logistics", "Логистика"),
     ("reverse_logistics", "Обратная логистика"),
+    ("other_accruals", "Прочие или неизвестные начисления"),
     ("amount", "Итого"),
 )
 TRANSACTION_SHEET_SCHEMA = (
@@ -97,6 +115,10 @@ USER_TRANSACTION_SHEET_HEADER = tuple(header for _, header in USER_TRANSACTION_S
 
 class OzonPayloadError(ValueError):
     """Raised when an Ozon response does not match the documented schema."""
+
+
+class AccrualIntegrityError(ValueError):
+    """Raised when Ozon's accrual details do not reconcile with their total."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +195,7 @@ class Commission:
 @dataclass(frozen=True, slots=True)
 class Delivery:
     services: tuple[AccrualFee, ...] = ()
-    total_accrued: Money = Money()
+    total_accrued: Money | None = None
 
     @classmethod
     def from_api(cls, value: object, path: str) -> Delivery:
@@ -186,7 +208,11 @@ class Delivery:
                 AccrualFee.from_api(service, f"{path}.services[{index}]")
                 for index, service in enumerate(services)
             ),
-            total_accrued=Money.from_api(data.get("total_accrued"), f"{path}.total_accrued"),
+            total_accrued=(
+                Money.from_api(data["total_accrued"], f"{path}.total_accrued")
+                if data.get("total_accrued") is not None
+                else None
+            ),
         )
 
 
@@ -383,20 +409,16 @@ class TransactionRow:
     operation_type_name: str = ""
     posting_number: str = ""
     sku: int | None = None
-    count: int = 0
+    count: int | None = None
     accruals_for_sale: Decimal = Decimal("0")
     sale_commission_percents: str = ""
     sale_commission: Decimal = Decimal("0")
-    order_assembly: Decimal = Decimal("0")
-    shipment_processing: Decimal = Decimal("0")
-    highway: Decimal = Decimal("0")
     last_mile: Decimal = Decimal("0")
-    reverse_highway: Decimal = Decimal("0")
     refund_processing: Decimal = Decimal("0")
     processing_of_cancelled_or_unclaimed_item: Decimal = Decimal("0")
-    processing_of_unbought_item: Decimal = Decimal("0")
     logistics: Decimal = Decimal("0")
     reverse_logistics: Decimal = Decimal("0")
+    other_accruals: Decimal = Decimal("0")
     amount: Decimal = Decimal("0")
     operation_id: int = 0
 
