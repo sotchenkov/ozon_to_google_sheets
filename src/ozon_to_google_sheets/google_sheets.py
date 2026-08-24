@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 import gspread
+import requests
+from gspread.exceptions import APIError
+from gspread.http_client import HTTPClient
 
 from .models import (
     LEGACY_TRANSACTION_COLUMNS,
@@ -35,6 +41,9 @@ FIRST_DATA_ROW = 2
 LAST_COLUMN = _column_name(COLUMN_COUNT)
 SHEET_RANGE = f"A1:{LAST_COLUMN}"
 RowKey = tuple[str, str]
+GOOGLE_REQUEST_TIMEOUT = (5.0, 30.0)
+GOOGLE_REQUEST_ATTEMPTS = 3
+GOOGLE_MAX_RETRY_DELAY = 30.0
 
 
 class GoogleSheetsError(RuntimeError):
@@ -43,6 +52,33 @@ class GoogleSheetsError(RuntimeError):
 
 class GoogleSheetsSchemaError(GoogleSheetsError):
     """Raised when worksheet or incoming rows do not match the stable schema."""
+
+
+class ReliableHTTPClient(HTTPClient):
+    """Use finite timeouts and bounded retries for transient Google API failures."""
+
+    def __init__(self, auth: Any, session: requests.Session | None = None) -> None:
+        super().__init__(auth, session)
+        self.timeout = GOOGLE_REQUEST_TIMEOUT
+
+    def request(self, *args: Any, **kwargs: Any) -> requests.Response:
+        for attempt in range(1, GOOGLE_REQUEST_ATTEMPTS + 1):
+            try:
+                return super().request(*args, **kwargs)
+            except APIError as error:
+                response = error.response
+                if attempt == GOOGLE_REQUEST_ATTEMPTS or not _is_retryable_status(
+                    response.status_code
+                ):
+                    raise
+                delay = _retry_delay(response.headers.get("Retry-After"), attempt)
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == GOOGLE_REQUEST_ATTEMPTS:
+                    raise
+                delay = _retry_delay(None, attempt)
+            time.sleep(delay)
+
+        raise AssertionError("Google request retry loop ended unexpectedly")
 
 
 class Worksheet(Protocol):
@@ -87,9 +123,15 @@ class GoogleSheetsAdapter:
             )
         try:
             client = (
-                gspread.service_account_from_dict(credentials_info)
+                gspread.service_account_from_dict(
+                    credentials_info,
+                    http_client=ReliableHTTPClient,
+                )
                 if credentials_info is not None
-                else gspread.service_account(filename=str(credentials_path))
+                else gspread.service_account(
+                    filename=str(credentials_path),
+                    http_client=ReliableHTTPClient,
+                )
             )
             worksheet = client.open_by_key(spreadsheet_id).get_worksheet_by_id(worksheet_id)
         except Exception as error:
@@ -301,6 +343,35 @@ def _has_value(value: Any) -> bool:
 
 def _is_blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code in (408, 429) or 500 <= status_code < 600
+
+
+def _retry_delay(
+    retry_after: str | None,
+    attempt: int,
+    *,
+    now: datetime | None = None,
+) -> float:
+    fallback = min(float(2 ** (attempt - 1)), GOOGLE_MAX_RETRY_DELAY)
+    if retry_after is None:
+        return fallback
+
+    try:
+        seconds = float(retry_after)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(retry_after)
+        except (TypeError, ValueError, OverflowError):
+            return fallback
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        current_time = now or datetime.now(timezone.utc)
+        seconds = (retry_at - current_time).total_seconds()
+
+    return min(max(seconds, 0.0), GOOGLE_MAX_RETRY_DELAY)
 
 
 def _build_update_ranges(

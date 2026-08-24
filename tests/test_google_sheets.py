@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
+import requests
 
 from ozon_to_google_sheets import google_sheets
 from ozon_to_google_sheets.google_sheets import (
@@ -11,6 +13,7 @@ from ozon_to_google_sheets.google_sheets import (
     GoogleSheetsAdapter,
     GoogleSheetsError,
     GoogleSheetsSchemaError,
+    ReliableHTTPClient,
 )
 from ozon_to_google_sheets.models import (
     LEGACY_TRANSACTION_COLUMNS,
@@ -28,14 +31,18 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
 ) -> None:
     worksheet = FakeWorksheet()
     client = FakeGspreadClient(worksheet)
-    auth_calls: list[tuple[str, object]] = []
+    auth_calls: list[tuple[str, object, object]] = []
 
-    def service_account(*, filename: str) -> FakeGspreadClient:
-        auth_calls.append(("path", filename))
+    def service_account(*, filename: str, http_client: object) -> FakeGspreadClient:
+        auth_calls.append(("path", filename, http_client))
         return client
 
-    def service_account_from_dict(credentials: object) -> FakeGspreadClient:
-        auth_calls.append(("content", credentials))
+    def service_account_from_dict(
+        credentials: object,
+        *,
+        http_client: object,
+    ) -> FakeGspreadClient:
+        auth_calls.append(("content", credentials, http_client))
         return client
 
     monkeypatch.setattr(google_sheets.gspread, "service_account", service_account)
@@ -57,7 +64,9 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
     expected_credentials: object = (
         "credentials-for-test.json" if credential_source == "path" else {"type": "service_account"}
     )
-    assert auth_calls == [(credential_source, expected_credentials)]
+    assert auth_calls == [
+        (credential_source, expected_credentials, ReliableHTTPClient)
+    ]
     assert client.spreadsheet_ids == ["spreadsheet-for-test"]
     assert client.worksheet_ids == [0]
     assert adapter.get_operation_ids() == []
@@ -66,7 +75,8 @@ def test_connect_uses_service_account_and_explicit_sheet_selection(
 def test_connect_wraps_google_errors_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def service_account(*, filename: str) -> FakeGspreadClient:
+    def service_account(*, filename: str, http_client: object) -> FakeGspreadClient:
+        assert http_client is ReliableHTTPClient
         raise OSError(f"cannot read {filename}")
 
     monkeypatch.setattr(google_sheets.gspread, "service_account", service_account)
@@ -83,6 +93,83 @@ def test_connect_wraps_google_errors_without_credentials(
         "Could not connect to Google spreadsheet 'spreadsheet-for-test', worksheet ID 123456"
     )
     assert "credentials-for-test.json" not in str(error.value)
+
+
+def test_google_http_client_uses_timeouts_and_retry_after(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _ScriptedSession(
+        [
+            _google_response(429, retry_after="7"),
+            _google_response(200),
+        ]
+    )
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(google_sheets.time, "sleep", sleep_calls.append)
+
+    response = ReliableHTTPClient(object(), session=session).request(
+        "GET",
+        "https://sheets.googleapis.test/values",
+    )
+
+    assert response.status_code == 200
+    assert [call["timeout"] for call in session.calls] == [(5.0, 30.0), (5.0, 30.0)]
+    assert sleep_calls == [7.0]
+
+
+def test_google_http_client_retries_network_and_server_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _ScriptedSession(
+        [
+            requests.Timeout("synthetic timeout"),
+            _google_response(503),
+            _google_response(200),
+        ]
+    )
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(google_sheets.time, "sleep", sleep_calls.append)
+
+    response = ReliableHTTPClient(object(), session=session).request(
+        "GET",
+        "https://sheets.googleapis.test/values",
+    )
+
+    assert response.status_code == 200
+    assert len(session.calls) == 3
+    assert sleep_calls == [1.0, 2.0]
+
+
+def test_google_http_client_does_not_retry_permanent_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _ScriptedSession([_google_response(400)])
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(google_sheets.time, "sleep", sleep_calls.append)
+
+    with pytest.raises(google_sheets.APIError):
+        ReliableHTTPClient(object(), session=session).request(
+            "GET",
+            "https://sheets.googleapis.test/values",
+        )
+
+    assert len(session.calls) == 1
+    assert sleep_calls == []
+
+
+def test_retry_after_http_date_is_bounded() -> None:
+    now = datetime(2026, 8, 24, 10, 0, tzinfo=timezone.utc)
+
+    assert google_sheets._retry_delay(
+        "Mon, 24 Aug 2026 10:00:12 GMT",
+        1,
+        now=now,
+    ) == 12.0
+    assert google_sheets._retry_delay(
+        "Mon, 24 Aug 2026 10:02:00 GMT",
+        1,
+        now=now,
+    ) == 30.0
 
 
 @pytest.mark.parametrize(
@@ -397,3 +484,36 @@ def _sheet_row(
         marker,
         *("" for _ in range(8)),
     ]
+
+
+class _ScriptedSession:
+    def __init__(self, outcomes: list[requests.Response | requests.RequestException]) -> None:
+        self._outcomes = iter(outcomes)
+        self.calls: list[dict[str, Any]] = []
+
+    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        self.calls.append({"method": method, "url": url, **kwargs})
+        try:
+            outcome = next(self._outcomes)
+        except StopIteration as error:
+            raise AssertionError(f"Unexpected HTTP request to {url}") from error
+        if isinstance(outcome, requests.RequestException):
+            raise outcome
+        return outcome
+
+
+def _google_response(status_code: int, *, retry_after: str | None = None) -> requests.Response:
+    response = requests.Response()
+    response.status_code = status_code
+    response.url = "https://sheets.googleapis.test/values"
+    response._content = (
+        b'{"value": "ok"}'
+        if status_code < 400
+        else (
+            '{"error": {"code": '
+            f'{status_code}, "message": "synthetic Google error", "status": "ERROR"}}'
+        ).encode()
+    )
+    if retry_after is not None:
+        response.headers["Retry-After"] = retry_after
+    return response
