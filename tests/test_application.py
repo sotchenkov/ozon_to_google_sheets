@@ -10,7 +10,10 @@ from typing import Any
 import pytest
 
 from ozon_to_google_sheets import application
-from ozon_to_google_sheets.config import AppConfig
+from ozon_to_google_sheets.config import AppConfig, ConfigError
+from ozon_to_google_sheets.google_sheets import GoogleSheetsError
+from ozon_to_google_sheets.models import OzonPayloadError
+from ozon_to_google_sheets.ozon import OzonRequestError
 
 
 def test_run_composes_external_adapters_and_sync_service(
@@ -43,6 +46,7 @@ def test_run_composes_external_adapters_and_sync_service(
     }
     assert logger.messages == [
         "The application has been started",
+        "Synchronization completed successfully; Ozon accruals processed: 1",
         "The application has shut down",
     ]
 
@@ -69,11 +73,78 @@ def test_main_loads_config_runs_once_and_returns_success(
 ) -> None:
     config = _config(tmp_path)
     calls: list[AppConfig] = []
+    stdout = StringIO()
     monkeypatch.setattr(application, "load_config", lambda: config)
     monkeypatch.setattr(application, "run", lambda value: calls.append(value) or [910001])
 
-    assert application.main([]) == application.EXIT_SUCCESS
+    assert application.main([], stdout=stdout) == application.EXIT_SUCCESS
     assert calls == [config]
+    assert stdout.getvalue() == (
+        "Synchronization completed successfully. Processed Ozon accruals: 1.\n"
+    )
+
+
+def test_main_reports_configuration_error_without_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stderr = StringIO()
+    monkeypatch.setattr(
+        application,
+        "load_config",
+        lambda: _raise(ConfigError("Missing required environment variables: OZON_TOKEN")),
+    )
+    monkeypatch.setattr(
+        application,
+        "run",
+        lambda _config: pytest.fail("synchronization must not run with invalid configuration"),
+    )
+
+    exit_code = application.main([], stderr=stderr)
+
+    assert exit_code == application.EXIT_CONFIGURATION_ERROR
+    assert stderr.getvalue() == (
+        "Configuration error: Missing required environment variables: OZON_TOKEN\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        OzonRequestError("synthetic Ozon failure"),
+        GoogleSheetsError("synthetic Google Sheets failure"),
+        OzonPayloadError("synthetic payload failure"),
+        OSError("synthetic filesystem failure"),
+    ),
+)
+def test_main_reports_expected_runtime_error_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: Exception,
+) -> None:
+    stderr = StringIO()
+    monkeypatch.setattr(application, "load_config", lambda: _config(tmp_path))
+    monkeypatch.setattr(application, "run", lambda _config: _raise(failure))
+
+    exit_code = application.main([], stderr=stderr)
+
+    assert exit_code == application.EXIT_RUNTIME_ERROR
+    assert stderr.getvalue() == f"Synchronization failed: {failure}\n"
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_does_not_hide_unexpected_programming_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(application, "load_config", lambda: _config(tmp_path))
+    monkeypatch.setattr(
+        application,
+        "run",
+        lambda _config: _raise(RuntimeError("synthetic programming error")),
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic programming error"):
+        application.main([])
 
 
 @pytest.mark.parametrize("argument", ("--help", "--version", "doctor", "--dry-run"))
@@ -188,3 +259,7 @@ def _config(tmp_path: Path) -> AppConfig:
         date_to=date(2026, 8, 21),
         log_file=tmp_path / "logs" / "application.log",
     )
+
+
+def _raise(error: Exception) -> None:
+    raise error
