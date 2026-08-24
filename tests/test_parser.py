@@ -159,6 +159,46 @@ def test_transformer_rejects_parent_total_mismatch() -> None:
         AccrualTransformer().transform(accrual, types, ())
 
 
+def test_transformer_rejects_delivery_breakdown_mismatch() -> None:
+    accrual = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 46,
+                    "date": "2026-08-23",
+                    "total_amount": _money("87.00"),
+                    "posting": {
+                        "products": [
+                            {
+                                **_product(
+                                    1001,
+                                    "100.00",
+                                    "-10.00",
+                                    "100.00",
+                                    "-10.00",
+                                    "10",
+                                    [(1, "-3.00")],
+                                ),
+                                "delivery": {
+                                    "services": [_fee(1, "-3.00")],
+                                    "total_accrued": _money("-5.00"),
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+    ).accruals
+    types = parse_accrual_types({"accrual_types": [_type(1, "Logistic")]})
+
+    with pytest.raises(
+        AccrualIntegrityError,
+        match=r"operation 46 delivery services total -3\.00.*total_accrued -5\.00.*SKU 1001",
+    ):
+        AccrualTransformer().transform(accrual, types, ())
+
+
 def test_transformer_preserves_type_missing_from_catalogue(caplog: Any) -> None:
     accrual = AccrualPage.from_api(
         {
