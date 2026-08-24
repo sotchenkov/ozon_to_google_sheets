@@ -31,12 +31,24 @@ ozon-to-google-sheets = "ozon_to_google_sheets.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.3,<10",
+    "pytest-cov>=7.1.0",
     "ruff>=0.11,<1",
 ]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = [
+    "-q",
+    "--strict-config",
+    "--strict-markers",
+    "--cov=ozon_to_google_sheets",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=95",
+]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["ozon_to_google_sheets"]
 
 [tool.ruff]
 line-length = 100
