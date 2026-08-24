@@ -202,7 +202,6 @@ def test_empty_upsert_does_not_read_or_write_sheet() -> None:
 
     assert worksheet.get_calls == []
     assert worksheet.batch_update_calls == []
-    assert worksheet.batch_clear_calls == []
 
 
 def test_empty_sheet_writes_header_and_every_product_in_one_batch() -> None:
@@ -228,7 +227,6 @@ def test_empty_sheet_writes_header_and_every_product_in_one_batch() -> None:
             "value_input_option": "RAW",
         }
     ]
-    assert worksheet.batch_clear_calls == []
     assert worksheet.rows == [list(SHEET_HEADER), *rows]
 
 
@@ -276,17 +274,24 @@ def test_upsert_clears_duplicates_and_stale_products_idempotently() -> None:
 
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A2:P2", "values": [incoming]}],
+            "data": [
+                {
+                    "range": "A2:P4",
+                    "values": [
+                        incoming,
+                        ["" for _ in SHEET_HEADER],
+                        ["" for _ in SHEET_HEADER],
+                    ],
+                }
+            ],
             "value_input_option": "RAW",
         }
     ]
-    assert worksheet.batch_clear_calls == [["A3:P4"]]
     assert worksheet.rows[4] == unrelated
 
     adapter.upsert_rows([incoming])
 
     assert len(worksheet.batch_update_calls) == 1
-    assert len(worksheet.batch_clear_calls) == 1
     assert adapter.get_operation_ids() == ["42", "43"]
 
 
@@ -299,8 +304,15 @@ def test_upsert_groups_disjoint_duplicate_and_stale_ranges() -> None:
 
     GoogleSheetsAdapter(worksheet).upsert_rows([current])
 
-    assert worksheet.batch_update_calls == []
-    assert worksheet.batch_clear_calls == [["A3:P3", "A5:P5"]]
+    assert worksheet.batch_update_calls == [
+        {
+            "data": [
+                {"range": "A3:P3", "values": [["" for _ in SHEET_HEADER]]},
+                {"range": "A5:P5", "values": [["" for _ in SHEET_HEADER]]},
+            ],
+            "value_input_option": "RAW",
+        }
+    ]
 
 
 def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
@@ -318,7 +330,12 @@ def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
     adapter.upsert_rows([_sheet_row(42, 1001)])
 
     assert adapter.get_operation_ids() == ["42", "43"]
-    assert worksheet.batch_update_calls == []
+    assert worksheet.batch_update_calls == [
+        {
+            "data": [{"range": "A2:P2", "values": [_sheet_row(42, 1001)]}],
+            "value_input_option": "RAW",
+        }
+    ]
 
 
 def test_partial_matching_header_is_completed() -> None:
@@ -345,7 +362,6 @@ def test_mismatched_header_stops_before_writing() -> None:
         GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row(42, 1001)])
 
     assert worksheet.batch_update_calls == []
-    assert worksheet.batch_clear_calls == []
 
 
 @pytest.mark.parametrize(
@@ -388,7 +404,6 @@ def test_legacy_header_requires_explicit_migration(
 
     assert worksheet.rows == original_rows
     assert worksheet.batch_update_calls == []
-    assert worksheet.batch_clear_calls == []
 
 
 @pytest.mark.parametrize(
@@ -437,15 +452,21 @@ def test_sheet_api_errors_have_clear_context(failure: str, message: str) -> None
         GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row(42, 1001)])
 
 
-def test_batch_clear_errors_have_clear_context() -> None:
-    row = _sheet_row(42, 1001)
-    worksheet = FakeWorksheet([list(SHEET_HEADER), row, row], failure="clear")
+def test_large_identifiers_are_written_as_text_and_remain_idempotent() -> None:
+    operation_id = 9_007_199_254_740_993
+    sku = 9_007_199_254_740_995
+    row = _sheet_row(operation_id, sku)
+    row[0] = operation_id
+    row[4] = sku
+    worksheet = FakeWorksheet()
+    adapter = GoogleSheetsAdapter(worksheet)
 
-    with pytest.raises(
-        GoogleSheetsError,
-        match="Could not clear duplicate or stale Google Sheets rows",
-    ):
-        GoogleSheetsAdapter(worksheet).upsert_rows([row])
+    adapter.upsert_rows([row])
+    adapter.upsert_rows([row])
+
+    assert worksheet.rows[1][0] == str(operation_id)
+    assert worksheet.rows[1][4] == str(sku)
+    assert len(worksheet.batch_update_calls) == 1
 
 
 def test_distinct_accrual_ids_with_the_same_visible_values_do_not_collide() -> None:
@@ -459,7 +480,6 @@ def test_distinct_accrual_ids_with_the_same_visible_values_do_not_collide() -> N
 
     assert worksheet.rows == [list(SHEET_HEADER), first, second]
     assert len(worksheet.batch_update_calls) == 1
-    assert worksheet.batch_clear_calls == []
     assert adapter.get_operation_ids() == ["42", "43"]
 
 
@@ -474,11 +494,11 @@ def _sheet_row(
     posting_reference: str = "posting-for-test",
 ) -> list[Any]:
     return [
-        operation_id,
+        str(operation_id),
         operation_date,
         operation_type,
         posting_reference,
-        sku,
+        "" if sku is None else str(sku),
         count,
         "",
         marker,

@@ -96,8 +96,6 @@ class Worksheet(Protocol):
         value_input_option: str,
     ) -> Any: ...
 
-    def batch_clear(self, ranges: Sequence[str]) -> Any: ...
-
 
 class GoogleSheetsAdapter:
     """Reconcile transaction rows in one worksheet by operation and SKU."""
@@ -190,21 +188,17 @@ class GoogleSheetsAdapter:
                 (first_row + offset, row) for offset, row in enumerate(rows_to_append)
             )
 
+        replacements.extend(
+            (row_number, ["" for _ in range(COLUMN_COUNT)])
+            for row_number in rows_to_clear
+        )
+
         updates = _build_update_ranges(replacements)
         if updates:
             try:
                 self._worksheet.batch_update(updates, value_input_option="RAW")
             except Exception as error:
                 message = "Could not write transaction rows to Google Sheets"
-                self._logger.exception(message)
-                raise GoogleSheetsError(message) from error
-
-        clear_ranges = _build_clear_ranges(rows_to_clear)
-        if clear_ranges:
-            try:
-                self._worksheet.batch_clear(clear_ranges)
-            except Exception as error:
-                message = "Could not clear duplicate or stale Google Sheets rows"
                 self._logger.exception(message)
                 raise GoogleSheetsError(message) from error
 
@@ -242,6 +236,8 @@ def _index_incoming_rows(data: Sequence[list[Any]]) -> dict[RowKey, list[Any]]:
                 "Transaction rows must have unique operation_id and sku values; "
                 f"duplicate key {key!r}"
             )
+        row[OPERATION_ID_INDEX] = key[0]
+        row[SKU_INDEX] = key[1]
         rows_by_key[key] = row
     return rows_by_key
 
@@ -394,20 +390,3 @@ def _build_update_ranges(
         previous_row = row_number
     updates.append({"range": f"A{first_row}:{LAST_COLUMN}{previous_row}", "values": values})
     return updates
-
-
-def _build_clear_ranges(row_numbers: Sequence[int]) -> list[str]:
-    ordered = sorted(set(row_numbers))
-    if not ordered:
-        return []
-
-    ranges: list[tuple[int, int]] = []
-    first_row = last_row = ordered[0]
-    for row_number in ordered[1:]:
-        if row_number == last_row + 1:
-            last_row = row_number
-        else:
-            ranges.append((first_row, last_row))
-            first_row = last_row = row_number
-    ranges.append((first_row, last_row))
-    return [f"A{first_row}:{LAST_COLUMN}{last_row}" for first_row, last_row in ranges]

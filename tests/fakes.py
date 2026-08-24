@@ -81,7 +81,7 @@ class FakeGspreadClient:
 
 
 class FakeWorksheet:
-    """In-memory worksheet with batched write and clear semantics."""
+    """In-memory worksheet with batched write semantics."""
 
     def __init__(
         self,
@@ -93,7 +93,6 @@ class FakeWorksheet:
         self.failure = failure
         self.get_calls: list[dict[str, str]] = []
         self.batch_update_calls: list[dict[str, Any]] = []
-        self.batch_clear_calls: list[list[str]] = []
 
     def get(
         self,
@@ -126,15 +125,6 @@ class FakeWorksheet:
             first_row, _ = _range_rows(update["range"])
             for offset, row in enumerate(update["values"]):
                 self._set_row(first_row + offset, row)
-
-    def batch_clear(self, ranges: Sequence[str]) -> None:
-        if self.failure == "clear":
-            raise RuntimeError("fake clear failure")
-        self.batch_clear_calls.append(list(ranges))
-        for range_name in ranges:
-            first_row, last_row = _range_rows(range_name)
-            for row_number in range(first_row, last_row + 1):
-                self._set_row(row_number, [])
 
     def _set_row(self, row_number: int, values: Sequence[Any]) -> None:
         while len(self.rows) < row_number:
