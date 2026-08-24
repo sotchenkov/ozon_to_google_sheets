@@ -9,6 +9,7 @@ on:
     branches:
       - develop
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -66,7 +67,7 @@ jobs:
 
   container-check:
     name: Container build and scan
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     needs: python
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -106,6 +107,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_name: ${{ steps.image.outputs.name }}
+      image_digest: ${{ steps.published_image.outputs.digest }}
 
     steps:
       - name: Check out repository
@@ -140,6 +144,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
+        with:
+          version: 1.3.3
+
       - name: Prepare registry image name
         id: image
         env:
@@ -155,3 +164,60 @@ jobs:
           docker tag "$LOCAL_IMAGE" "$IMAGE_NAME:latest"
           docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
           docker push "$IMAGE_NAME:latest"
+
+      - name: Resolve published image digest
+        id: published_image
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        run: |
+          digest="$(oras resolve "${IMAGE_NAME}:sha-${GITHUB_SHA}")"
+          printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  update-image-reference:
+    name: Update Compose image reference
+    needs: publish-image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    env:
+      IMAGE_NAME: ${{ needs.publish-image.outputs.image_name }}
+      IMAGE_DIGEST: ${{ needs.publish-image.outputs.image_digest }}
+
+    steps:
+      - name: Check out develop
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+
+      - name: Pin Compose image to the published digest
+        run: |
+          image_reference="${IMAGE_NAME}:sha-${GITHUB_SHA}@${IMAGE_DIGEST}"
+          if ! grep -Fq "@$IMAGE_DIGEST\"" docker-compose.yml; then
+            sed -i "s|^    image: .*|    image: \"$image_reference\"|" docker-compose.yml
+          fi
+          grep -Fq "    image: \"$IMAGE_NAME" docker-compose.yml
+          grep -Fq "@$IMAGE_DIGEST\"" docker-compose.yml
+          OZON_ENV_FILE=.env.example docker compose config --quiet
+
+      - name: Create image update pull request
+        id: image_pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: automation/update-compose-image
+          base: develop
+          add-paths: docker-compose.yml
+          commit-message: "change: update Compose image digest"
+          title: "change: update Compose image digest"
+          body: |
+            Pin Docker Compose to the image built from `${{ github.sha }}` and its verified GHCR digest.
+          delete-branch: true
+
+      - name: Run CI for the image update
+        if: steps.image_pr.outputs.pull-request-operation == 'created' || steps.image_pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --ref automation/update-compose-image

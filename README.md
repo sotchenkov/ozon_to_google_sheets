@@ -66,4 +66,6 @@ an immutable version should use the `sha-<commit>` tag (or the registry digest) 
 
 Repository rulesets should block direct pushes to `develop` and `main`, require pull-request
 approval, and require the `Python quality and package` and `Container build and scan` checks before
-merge. The workflow contains no deployment, release, or user-managed secrets.
+merge. Repository Actions settings must allow GitHub Actions to create pull requests so the image
+digest update can use the same protected flow. The workflow contains no deployment, release, or
+user-managed secrets.
