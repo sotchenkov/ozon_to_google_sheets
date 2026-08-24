@@ -19,15 +19,22 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.14"
   UV_LOCKED: "1"
   UV_NO_PROGRESS: "1"
 
 jobs:
   python:
-    name: Python quality and package
+    name: Python ${{ matrix.python-version }} quality and package
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.14"
+    env:
+      PYTHON_VERSION: ${{ matrix.python-version }}
 
     steps:
       - name: Check out repository
@@ -37,7 +44,7 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.12.5"
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: uv.lock
 
@@ -65,10 +72,26 @@ jobs:
             "import importlib.metadata; import ozon_to_google_sheets; print(importlib.metadata.version('ozon-to-google-sheets'))"
           test -x "$package_environment/bin/ozon-to-google-sheets"
 
+  compose:
+    name: Docker Compose configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate Docker Compose configuration
+        env:
+          OZON_ENV_FILE: .env.example
+        run: docker compose config --quiet
+
   container-check:
     name: Container build and scan
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    needs: python
+    needs:
+      - compose
+      - python
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -101,7 +124,9 @@ jobs:
   publish-image:
     name: Scan and publish main image
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: python
+    needs:
+      - compose
+      - python
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
