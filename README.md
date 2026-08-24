@@ -34,12 +34,31 @@ trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
   ozon-to-google-sheets:ci-local
 ```
 
+## Run with Docker Compose
+
+Copy `.env.example` to `.env`, replace every placeholder, and place the Google service-account
+file at `secrets/google-service-account.json`. The entire local `secrets` directory is mounted
+read-only at `/app/secrets`; it is ignored by Git and is never included in the image.
+
+Run the one-shot synchronization from the GHCR image with:
+
+```console
+docker compose up --pull always --abort-on-container-exit --exit-code-from app
+docker compose down
+```
+
+If the GHCR package is private, authenticate Docker with a token that has only `read:packages`
+before starting Compose. Set `OZON_ENV_FILE` to use an environment file other than `.env`.
+
 ## CI and container tags
 
 Pull requests into `develop` or `main` run all Python checks, build the container without
 publishing it, and fail on high or critical vulnerabilities. A push to `develop` runs the Python
 checks only. After a merge into `main`, CI builds one container, scans it, and publishes that same
 verified image to GitHub Container Registry with both `sha-<commit>` and `latest` tags.
+
+After publication, CI resolves the registry digest and opens a pull request into `develop` that
+pins the Compose `image` value to `sha-<commit>@sha256:<digest>`.
 
 Consequently, `latest` never points at code that exists only in `develop`. Consumers that require
 an immutable version should use the `sha-<commit>` tag (or the registry digest) instead of

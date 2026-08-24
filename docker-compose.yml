@@ -1,0 +1,22 @@
+name: ozon-to-google-sheets
+
+services:
+  app:
+    image: "ghcr.io/sotchenkov/ozon_to_google_sheets:latest"
+    pull_policy: always
+    env_file:
+      - ${OZON_ENV_FILE:-.env}
+    init: true
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /app/logs:uid=10001,gid=10001,mode=0750
+    volumes:
+      - type: bind
+        source: ./secrets
+        target: /app/secrets
+        read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
