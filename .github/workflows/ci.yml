@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.14"
+  UV_LOCKED: "1"
+  UV_NO_PROGRESS: "1"
+
+jobs:
+  python:
+    name: Python quality and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.5"
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Check formatting
+        run: uv run --locked ruff format --check .
+
+      - name: Lint
+        run: uv run --locked ruff check .
+
+      - name: Run tests with coverage
+        run: uv run --locked pytest
+
+      - name: Build package
+        run: uv build
+
+      - name: Install and inspect wheel in a clean environment
+        run: |
+          package_environment="$RUNNER_TEMP/package-check"
+          uv venv --python "$PYTHON_VERSION" "$package_environment"
+          uv pip install --python "$package_environment/bin/python" dist/*.whl
+          "$package_environment/bin/python" -c \
+            "import importlib.metadata; import ozon_to_google_sheets; print(importlib.metadata.version('ozon-to-google-sheets'))"
+          test -x "$package_environment/bin/ozon-to-google-sheets"
+
+  container-check:
+    name: Container build and scan
+    if: github.event_name == 'pull_request'
+    needs: python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build image without publishing
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          push: false
+          tags: ozon-to-google-sheets:ci-${{ github.sha }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ozon-to-google-sheets:ci-${{ github.sha }}
+          version: v0.73.0
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+
+  publish-image:
+    name: Scan and publish main image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build image for verification
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          push: false
+          tags: ozon-to-google-sheets:ci-${{ github.sha }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ozon-to-google-sheets:ci-${{ github.sha }}
+          version: v0.73.0
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare registry image name
+        id: image
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository }}
+        run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish verified image
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          LOCAL_IMAGE: ozon-to-google-sheets:ci-${{ github.sha }}
+        run: |
+          docker tag "$LOCAL_IMAGE" "$IMAGE_NAME:sha-$GITHUB_SHA"
+          docker tag "$LOCAL_IMAGE" "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
+          docker push "$IMAGE_NAME:latest"

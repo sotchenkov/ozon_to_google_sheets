@@ -293,13 +293,7 @@ def test_service_orchestrates_new_operations() -> None:
             "last_id": "",
         }
     ).accruals
-    accrual_types = parse_accrual_types(
-        {
-            "accrual_types": [
-                {"id": 7, "name": "LastMileCourier"}
-            ]
-        }
-    )
+    accrual_types = parse_accrual_types({"accrual_types": [{"id": 7, "name": "LastMileCourier"}]})
     posting_accruals = parse_posting_accruals(
         {
             "posting_accruals": [
@@ -350,9 +344,7 @@ def test_service_stops_before_sheet_upsert_when_ozon_response_is_empty() -> None
     service = _service(ozon, sheet)
 
     assert service.run() == []
-    assert ozon.calls == [
-        ("accruals", service.endpoint, service.date_from, service.date_to)
-    ]
+    assert ozon.calls == [("accruals", service.endpoint, service.date_from, service.date_to)]
     assert sheet.upsert_calls == 0
 
 
@@ -372,9 +364,7 @@ def test_service_upserts_existing_and_deduplicates_api_accruals() -> None:
     service = _service(ozon, sheet)
 
     assert service.run() == [42, 43]
-    assert ozon.calls == [
-        ("accruals", service.endpoint, service.date_from, service.date_to)
-    ]
+    assert ozon.calls == [("accruals", service.endpoint, service.date_from, service.date_to)]
     assert sheet.operation_ids == [42, 43]
     assert len(sheet.rows) == 2
     assert [row[2] for row in sheet.rows] == [42, 43]

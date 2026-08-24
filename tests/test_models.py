@@ -114,11 +114,7 @@ def test_accrual_page_reports_field_path_for_invalid_payload() -> None:
 
 def test_type_and_posting_models_parse_empty_and_populated_responses() -> None:
     types = parse_accrual_types(
-        {
-            "accrual_types": [
-                {"id": 7, "name": "LastMileCourier", "description": ""}
-            ]
-        }
+        {"accrual_types": [{"id": 7, "name": "LastMileCourier", "description": ""}]}
     )
     postings = parse_posting_accruals(
         {

@@ -34,9 +34,7 @@ def test_multiple_products_keep_quantities_and_parent_total_once(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
     page = AccrualPage.from_api(load_json_fixture("multiple_products.json"))
-    posting_accruals = parse_posting_accruals(
-        load_json_fixture("quantity_greater_than_one.json")
-    )
+    posting_accruals = parse_posting_accruals(load_json_fixture("quantity_greater_than_one.json"))
 
     rows = AccrualTransformer().transform(page.accruals, (), posting_accruals)
 
@@ -69,9 +67,7 @@ def test_return_and_cancellation_use_distinct_service_columns(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
     return_page = AccrualPage.from_api(load_json_fixture("return_operation.json"))
-    cancellation_page = AccrualPage.from_api(
-        load_json_fixture("cancellation_operation.json")
-    )
+    cancellation_page = AccrualPage.from_api(load_json_fixture("cancellation_operation.json"))
     accrual_types = parse_accrual_types(load_json_fixture("accrual_types.json"))
 
     rows = AccrualTransformer().transform(
