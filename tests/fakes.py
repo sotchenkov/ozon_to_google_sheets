@@ -129,7 +129,12 @@ class FakeWorksheet:
     def _set_row(self, row_number: int, values: Sequence[Any]) -> None:
         while len(self.rows) < row_number:
             self.rows.append([])
-        self.rows[row_number - 1] = list(values)
+        row = self.rows[row_number - 1]
+        if len(row) < len(values):
+            row.extend("" for _ in range(len(values) - len(row)))
+        for column, value in enumerate(values):
+            if value is not None:
+                row[column] = value
 
 
 class FakeOzonGateway:

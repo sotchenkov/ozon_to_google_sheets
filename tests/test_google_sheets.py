@@ -19,6 +19,7 @@ from ozon_to_google_sheets.models import (
     LEGACY_TRANSACTION_COLUMNS,
     LEGACY_USER_TRANSACTION_SHEET_HEADER,
     PREVIOUS_USER_TRANSACTION_SHEET_HEADER,
+    TRANSACTION_COLUMNS,
     USER_TRANSACTION_SHEET_HEADER,
 )
 from tests.fakes import FakeGspreadClient, FakeWorksheet
@@ -280,6 +281,41 @@ def test_upsert_preserves_partial_rows_and_appends_after_last_used_row() -> None
     assert worksheet.rows[4] == trailing_partial_row
 
 
+def test_upsert_clears_existing_count_when_incoming_quantity_is_unknown() -> None:
+    count_index = TRANSACTION_COLUMNS.index("count")
+    worksheet = FakeWorksheet([list(SHEET_HEADER), _sheet_row(42, 1001, count=2)])
+    incoming = _sheet_row(42, 1001, count=None)
+    expected = list(incoming)
+    expected[count_index] = ""
+    adapter = GoogleSheetsAdapter(worksheet)
+
+    adapter.upsert_rows([incoming])
+
+    assert incoming[count_index] is None
+    assert worksheet.batch_update_calls == [
+        {
+            "data": [{"range": "A2:P2", "values": [expected]}],
+            "value_input_option": "RAW",
+        }
+    ]
+    assert worksheet.rows[1][count_index] == ""
+
+    adapter.upsert_rows([incoming])
+
+    assert len(worksheet.batch_update_calls) == 1
+
+
+def test_fake_worksheet_skips_null_values_like_google_values_api() -> None:
+    worksheet = FakeWorksheet([["old", 2]])
+
+    worksheet.batch_update(
+        [{"range": "A1:B1", "values": [["new", None]]}],
+        value_input_option="RAW",
+    )
+
+    assert worksheet.rows == [["new", 2]]
+
+
 def test_upsert_clears_duplicates_and_stale_products_idempotently() -> None:
     current = _sheet_row(42, 1001, count=2, marker="old")
     duplicate = _sheet_row(42, 1001, count=2, marker="duplicate")
@@ -506,7 +542,7 @@ def _sheet_row(
     operation_id: int,
     sku: int | None,
     *,
-    count: int = 0,
+    count: int | None = 0,
     marker: str = "",
     operation_date: str = "2026-08-23",
     operation_type: str = "POSTING",
