@@ -230,7 +230,7 @@ class GoogleSheetsAdapter:
 def _index_incoming_rows(data: Sequence[list[Any]]) -> dict[RowKey, list[Any]]:
     rows_by_key: dict[RowKey, list[Any]] = {}
     for position, source_row in enumerate(data, start=1):
-        row = list(source_row)
+        row = _normalize_sheet_row(source_row)
         if len(row) != COLUMN_COUNT:
             raise GoogleSheetsSchemaError(
                 f"Transaction row {position} has {len(row)} columns; expected {COLUMN_COUNT}"
@@ -249,6 +249,10 @@ def _index_incoming_rows(data: Sequence[list[Any]]) -> dict[RowKey, list[Any]]:
         row[SKU_INDEX] = key[1]
         rows_by_key[key] = row
     return rows_by_key
+
+
+def _normalize_sheet_row(row: Sequence[Any]) -> list[Any]:
+    return ["" if value is None else value for value in row]
 
 
 def _index_existing_rows(values: Sequence[Sequence[Any]]) -> dict[RowKey, list[int]]:
