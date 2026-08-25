@@ -331,6 +331,31 @@ For every pull request and push to `develop` or `main`, CI runs the Python check
 Compose configuration. Test coverage from the Python 3.14 job is uploaded to Codecov. The remaining
 checks and container publication are defined in the CI workflow.
 
+## Releases
+
+The project's actual distribution is its Docker image in GHCR. Publishing to PyPI or attaching a
+wheel, sdist, or source archive to a GitHub Release is not required.
+
+Before a release, set the same version in `pyproject.toml` and
+`src/ozon_to_google_sheets/__init__.py`, run `uv lock`, and merge the changes from `develop` to
+`main` through a pull request with green CI. Then create an annotated stable tag on the resulting
+`main` commit and push it to GitHub:
+
+```console
+git switch main
+git pull --ff-only
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
+```
+
+Only the exact `vX.Y.Z` format without prerelease suffixes is accepted. CI rechecks the project,
+builds and scans the `linux/amd64` and `linux/arm64` images with Trivy, verifies the combined
+manifest, and only then publishes `ghcr.io/sotchenkov/ozon_to_google_sheets:X.Y.Z`, the immutable
+`sha-<commit>` tag, and `latest`. All three references must resolve to one digest; `latest` is moved
+only by the highest stable SemVer release. The `v` prefix belongs only to the Git tag, avoiding a
+second alias for the same version in GHCR. After publication, CI opens a pull request to `develop`
+that pins the Compose reference as `X.Y.Z@sha256:...`.
+
 ## Help and support
 
 We offer commercial help with deploying the project on your server or delivering everything

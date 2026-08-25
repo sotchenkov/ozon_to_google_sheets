@@ -328,6 +328,31 @@ OZON_ENV_FILE=.env.example docker compose config --quiet
 конфигурацию Compose. Покрытие тестами из запуска на Python 3.14 отправляется в Codecov. Остальные
 проверки и публикация контейнера описаны в workflow CI.
 
+## Релизы
+
+Фактический дистрибутив проекта — Docker-образ в GHCR. Публикация в PyPI и файлы wheel, sdist или
+архив исходного кода в GitHub Release не требуются.
+
+Перед релизом обновите одинаковую версию в `pyproject.toml` и
+`src/ozon_to_google_sheets/__init__.py`, выполните `uv lock` и влейте изменения из `develop` в
+`main` через pull request с зелёным CI. Затем поставьте на получившийся коммит `main` аннотированный
+стабильный тег и отправьте его в GitHub:
+
+```console
+git switch main
+git pull --ff-only
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
+```
+
+Допустим только точный формат `vX.Y.Z` без prerelease-суффиксов. CI повторно проверяет проект,
+собирает и сканирует Trivy образы `linux/amd64` и `linux/arm64`, проверяет общий manifest и только
+после этого публикует `ghcr.io/sotchenkov/ozon_to_google_sheets:X.Y.Z`, неизменяемый
+`sha-<commit>` и `latest`. Все три ссылки обязаны разрешаться в один digest; `latest` обновляется
+только самым новым стабильным SemVer-релизом. Префикс `v` используется только у Git-тега, чтобы не
+создавать второй алиас той же версии в GHCR. После публикации CI создаёт pull request в `develop`,
+который закрепляет Compose-ссылку в формате `X.Y.Z@sha256:...`.
+
 ## Помощь и поддержка
 
 Можем помочь на коммерческой основе развернуть проект на вашем сервере или сделать всё
