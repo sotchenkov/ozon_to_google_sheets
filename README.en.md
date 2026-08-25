@@ -4,10 +4,10 @@
 
 **Export Ozon financial accruals to Google Sheets**
 
-[Русский](README.md) · **English**
+[Русский](https://github.com/sotchenkov/ozon_to_google_sheets/blob/main/README.md) · **English**
 
 [![CI](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
-[![Coverage 98%](https://img.shields.io/badge/coverage-98%25-brightgreen?style=flat-square)](pyproject.toml)
+[![Codecov](https://codecov.io/gh/sotchenkov/ozon_to_google_sheets/graph/badge.svg)](https://app.codecov.io/gh/sotchenkov/ozon_to_google_sheets)
 [![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: Elastic 2.0](https://img.shields.io/badge/license-Elastic%202.0-005571?style=flat-square)](LICENSE)
@@ -67,7 +67,7 @@ docker compose down
 ```
 
 The container loads the accruals into the selected worksheet and exits. The header is written to
-`A1:T1`, with data below it. Warnings and errors go to `logs/logs.log`.
+`A1:P1`, with data below it. Warnings and errors go to `logs/logs.log`.
 
 ### Run without Docker
 
@@ -150,16 +150,40 @@ Both boundaries are included. Dates use the `Europe/Moscow` timezone.
 
 Dates must be between `2022-01-01` and today. The start date cannot be later than the end date.
 
+### Exit codes
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | The export completed successfully, including when the period contains no accruals |
+| `1` | Ozon, Google Sheets, network, reconciliation, or concurrent-run error |
+| `2` | Configuration error or unsupported command-line arguments |
+
+The container returns the application's exit code. The quick-start command propagates it through
+`--exit-code-from app`.
+
 ## Example sheet
 
 The application writes the following Russian column names:
 
-| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | За продажу или возврат до вычета комиссий и услуг | Ставка комиссии | Комиссия за продажу | Сборка заказа | Обработка отправления | Магистраль | Последняя миля | Обратная магистраль | Обработка возврата | Обработка отменённого или невостребованного товара | Обработка невыкупленного товара | Логистика | Обратная логистика | Итого |
-| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 3 | 100.00 | 10% | -10.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 90.00 |
+| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | За продажу или возврат до вычета комиссий и услуг | Ставка комиссии | Комиссия за продажу | Последняя миля | Обработка возврата | Обработка отменённого или невостребованного товара | Логистика | Обратная логистика | Прочие или неизвестные начисления | Итого |
+| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -5.00 | 0 | 0 | -7.00 | 0 | 0 | 123.00 |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 
-An accrual with multiple SKUs produces multiple rows. The total is written only to the first row,
-so summing the column counts the accrual once.
+One Ozon operation may include several SKUs, so its ID appears in several rows. Ozon supplies the
+total for the whole operation rather than for each SKU: the application writes it to the first row
+and leaves it empty in the others. A normal sum of the column therefore counts the operation once.
+
+### Unknown accruals and reconciliation
+
+Types that do not yet have a dedicated column are stored in `Прочие или неизвестные начисления`
+(`Other or unknown accruals`) and produce a warning in the log. The same column receives the
+operation amount when Ozon does not provide a monetary breakdown.
+
+Before writing, the application reconciles the sum of every monetary field in an operation with
+Ozon's total. If they differ, the current date is not written and the run exits with code `1`.
+Review warnings and errors in `logs/logs.log`, then compare the period total with the financial
+report in Ozon Seller.
 
 ## Repeated runs
 
@@ -167,8 +191,69 @@ You can run the project repeatedly: existing operations are updated, new ones ar
 operations for other dates remain in the worksheet. Manual edits in the export worksheet may be
 overwritten, so keep formulas and comments in a separate worksheet.
 
-An empty worksheet receives the header automatically. If its first row already contains another
-schema, the application stops without changing the worksheet.
+An empty worksheet receives the header automatically even if Ozon returns no accruals. Such a run
+is successful. If the first row already contains another schema, the application stops without
+changing the worksheet.
+
+A long period is processed one day at a time. If one day fails, earlier days remain saved and the
+failing day is not written. The log states the date from which you can resume by setting
+`OZON_DATE_FROM`.
+
+## Scheduled runs
+
+Use this one-shot command from a scheduler:
+
+```console
+cd /opt/ozon_to_google_sheets
+docker compose run --rm --pull always app
+```
+
+Example cron entry — every day at 06:15 in the server's timezone:
+
+```cron
+15 6 * * * cd /opt/ozon_to_google_sheets && /usr/bin/docker compose run --rm --pull always app >> logs/cron.log 2>&1
+```
+
+Minimal systemd units:
+
+```ini
+# /etc/systemd/system/ozon-to-google-sheets.service
+[Unit]
+Description=Export Ozon accruals to Google Sheets
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ozon_to_google_sheets
+ExecStart=/usr/bin/docker compose run --rm --pull always app
+```
+
+```ini
+# /etc/systemd/system/ozon-to-google-sheets.timer
+[Unit]
+Description=Run Ozon to Google Sheets daily
+
+[Timer]
+OnCalendar=*-*-* 06:15:00
+Persistent=true
+Unit=ozon-to-google-sheets.service
+
+[Install]
+WantedBy=timers.target
+```
+
+```console
+sudo systemctl daemon-reload
+sudo systemctl enable --now ozon-to-google-sheets.timer
+```
+
+If `command -v docker` prints another path, replace `/usr/bin/docker` in the examples with it.
+
+Do not run two synchronizations for the same worksheet at once. Within one installation, the
+application keeps a lock file in `logs/`, and the second run exits with code `1`. Installations on
+different servers or with different `logs/` directories do not share that lock, so use a single
+scheduler for each worksheet.
 
 ## Server permissions
 
@@ -207,6 +292,7 @@ The container needs read access to `secrets/google-service-account.json` and wri
 | Ozon 401/403 | Client ID, API key, and key permissions |
 | Ozon 429/5xx | Retry later; the application already makes up to three attempts |
 | Docker `Permission denied` | UID/GID `10001` can read `secrets` and write to `logs` |
+| `Another synchronization is already running` | Wait for the active run; check cron and systemd for duplicate jobs |
 
 If you need to share application logs, remove tokens, keys, seller IDs, and customer data first.
 
@@ -235,22 +321,15 @@ uv pip install --python "$package_environment/bin/python" dist/*.whl
 test -x "$package_environment/bin/ozon-to-google-sheets"
 ```
 
-Compose and container checks require Docker Buildx; building a foreign architecture also requires
-QEMU. Trivy must be available as the `trivy` command:
+To validate the Compose configuration:
 
 ```console
 OZON_ENV_FILE=.env.example docker compose config --quiet
-docker buildx build --platform linux/amd64 --load -t ozon-to-google-sheets:ci-amd64 .
-trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 ozon-to-google-sheets:ci-amd64
-docker buildx build --platform linux/arm64 --load -t ozon-to-google-sheets:ci-arm64 .
-trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 ozon-to-google-sheets:ci-arm64
 ```
 
-CI runs the Python checks and `docker compose config` for every pull request. Both architectures are
-built and scanned only for pull requests targeting `main`. After a merge to `main`, CI checks
-`linux/amd64` and `linux/arm64` again; the `sha-*` and `latest` tags move only after both Trivy scans
-succeed. A separate pull request then pins the verified digest in the `develop` branch's
-`docker-compose.yml`.
+For every pull request and push to `develop` or `main`, CI runs the Python checks and validates the
+Compose configuration. Test coverage from the Python 3.14 job is uploaded to Codecov. The remaining
+checks and container publication are defined in the CI workflow.
 
 ## Help and support
 
@@ -272,9 +351,14 @@ The project is distributed under the [Elastic License 2.0](LICENSE).
 
 - you may use and modify the code free of charge for yourself or your company;
 - you may charge a client to deploy the project on their server for their own use;
-- you may not create a public SaaS or managed service from the project without a separate license;
-- a commercial license is available from the author for SaaS or managed-service use.
+- without a separate license, you may not give clients access to substantial project functionality
+  as a hosted or managed service (for example, SaaS);
+- a commercial license is available from the author for such use.
 
 See [LICENSE](LICENSE) for the full terms.
+
+The software is provided “as is”, without warranties. The author is not liable for damages arising
+from use of the application, including errors or discrepancies in exported data. Reconcile the
+results with Ozon financial reports.
 
 Copyright © 2026 Alexey Sotchenkov.
