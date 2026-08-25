@@ -351,9 +351,14 @@ The project is distributed under the [Elastic License 2.0](LICENSE).
 
 - you may use and modify the code free of charge for yourself or your company;
 - you may charge a client to deploy the project on their server for their own use;
-- you may not create a public SaaS or managed service from the project without a separate license;
-- a commercial license is available from the author for SaaS or managed-service use.
+- without a separate license, you may not give clients access to substantial project functionality
+  as a hosted or managed service (for example, SaaS);
+- a commercial license is available from the author for such use.
 
 See [LICENSE](LICENSE) for the full terms.
+
+The software is provided “as is”, without warranties. The author is not liable for damages arising
+from use of the application, including errors or discrepancies in exported data. Reconcile the
+results with Ozon financial reports.
 
 Copyright © 2026 Alexey Sotchenkov.
