@@ -69,6 +69,13 @@ docker compose down
 The container loads the accruals into the selected worksheet and exits. The header is written to
 `A1:P1`, with data below it. Warnings and errors go to `logs/logs.log`.
 
+Compose uses the current `latest` image by default. To pin a release or an immutable digest, set
+the full image reference in `OZON_IMAGE`, for example:
+
+```dotenv
+OZON_IMAGE=ghcr.io/sotchenkov/ozon_to_google_sheets:0.1.0
+```
+
 ### Run without Docker
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
@@ -132,6 +139,7 @@ The application does not create a spreadsheet or worksheet; prepare them first.
 | `GOOGLE_CREDENTIALS_JSON` | Full JSON key supplied by an external secret store |
 | `OZON_DATE_FROM` | Start date, `YYYY-MM-DD` |
 | `OZON_DATE_TO` | End date, `YYYY-MM-DD` |
+| `OZON_IMAGE` | Optional Docker image: a release tag or digest reference |
 | `OZON_ENV_FILE` | Another Docker Compose env file instead of `.env` |
 
 Set only one Google credentials source: `GOOGLE_CREDENTIALS_PATH` or
