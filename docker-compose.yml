@@ -2,7 +2,7 @@ name: ozon-to-google-sheets
 
 services:
   app:
-    image: "${OZON_IMAGE:-ghcr.io/sotchenkov/ozon_to_google_sheets:latest}"
+    image: "ghcr.io/sotchenkov/ozon_to_google_sheets:latest"
     pull_policy: always
     env_file:
       - ${OZON_ENV_FILE:-.env}

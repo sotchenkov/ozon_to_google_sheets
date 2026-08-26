@@ -68,13 +68,6 @@ docker compose down
 Контейнер загрузит начисления в выбранный лист и завершится. Заголовки займут строку `A1:P1`,
 данные появятся ниже. Предупреждения и ошибки записываются в `logs/logs.log`.
 
-По умолчанию Compose использует свежий образ `latest`. Чтобы зафиксировать конкретный релиз или
-неизменяемый digest, задайте полный адрес образа в `OZON_IMAGE`, например:
-
-```dotenv
-OZON_IMAGE=ghcr.io/sotchenkov/ozon_to_google_sheets:0.1.0
-```
-
 ### Запуск без Docker
 
 Установите [uv](https://docs.astral.sh/uv/getting-started/installation/), затем выполните:
@@ -137,7 +130,6 @@ https://docs.google.com/spreadsheets/d/1AbCdEfGhExample/edit#gid=123456789
 | `GOOGLE_CREDENTIALS_JSON` | JSON-ключ целиком из внешнего хранилища секретов |
 | `OZON_DATE_FROM` | Начало периода, `YYYY-MM-DD` |
 | `OZON_DATE_TO` | Конец периода, `YYYY-MM-DD` |
-| `OZON_IMAGE` | Необязательный Docker-образ: тег релиза или адрес с digest |
 | `OZON_ENV_FILE` | Другой env-файл для Docker Compose вместо `.env` |
 
 Укажите только один источник Google credentials: `GOOGLE_CREDENTIALS_PATH` или
