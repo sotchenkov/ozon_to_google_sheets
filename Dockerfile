@@ -2,7 +2,7 @@
 
 FROM ghcr.io/astral-sh/uv:0.12.5 AS uv
 
-FROM python:3.14.7-slim-bookworm AS builder
+FROM python:3.14.7-slim-trixie AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -20,13 +20,17 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
-FROM python:3.14.7-slim-bookworm AS runtime
+FROM python:3.14.7-slim-trixie AS runtime
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-RUN groupadd --gid 10001 app \
+RUN apt-get update \
+    && apt-get upgrade --yes \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall --yes pip \
+    && groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home --home-dir /app app
 
 WORKDIR /app

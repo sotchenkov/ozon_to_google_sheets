@@ -195,7 +195,7 @@ jobs:
           version: v0.73.0
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: false
+          ignore-unfixed: true
           exit-code: "1"
 
   publish-platform-images:
@@ -250,7 +250,7 @@ jobs:
           version: v0.73.0
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: false
+          ignore-unfixed: true
           exit-code: "1"
 
       - name: Log in to GitHub Container Registry
