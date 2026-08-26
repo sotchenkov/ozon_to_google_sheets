@@ -9,6 +9,8 @@ on:
     branches:
       - develop
       - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -16,15 +18,71 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 env:
   UV_LOCKED: "1"
   UV_NO_PROGRESS: "1"
 
 jobs:
+  release_metadata:
+    name: Validate container release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - name: Check out repository and release history
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate stable release metadata
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        id: release
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tags must use the exact stable SemVer format vX.Y.Z."
+            exit 1
+          fi
+
+          git fetch origin +refs/heads/main:refs/remotes/origin/main --tags
+          release_commit="$(git rev-list -n 1 "refs/tags/$GITHUB_REF_NAME")"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not point to a commit from main."
+            exit 1
+          fi
+
+          release_version="${GITHUB_REF_NAME#v}"
+          project_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml)"
+          package_version="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' src/ozon_to_google_sheets/__init__.py)"
+          if [[ "$project_version" != "$release_version" || "$package_version" != "$release_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME must match pyproject.toml and package version."
+            exit 1
+          fi
+
+          highest_tag="$(
+            git tag --merged origin/main --list 'v*' |
+              grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
+              sort -V |
+              tail -n 1
+          )"
+          if [[ "$highest_tag" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::$GITHUB_REF_NAME is not the highest stable SemVer tag on main ($highest_tag)."
+            exit 1
+          fi
+
+          echo "commit=$release_commit" >> "$GITHUB_OUTPUT"
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+
   python:
     name: Python ${{ matrix.python-version }} quality and package
+    needs: release_metadata
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -90,6 +148,7 @@ jobs:
 
   compose:
     name: Docker Compose configuration
+    needs: release_metadata
     runs-on: ubuntu-24.04
     timeout-minutes: 5
 
@@ -155,10 +214,11 @@ jobs:
 
   publish-platform-images:
     name: Scan and stage ${{ matrix.architecture }} image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - compose
       - python
+      - release_metadata
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
@@ -176,6 +236,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release_metadata.outputs.commit }}
 
       - name: Set up QEMU
         if: matrix.architecture == 'arm64'
@@ -193,12 +255,12 @@ jobs:
           load: true
           platforms: ${{ matrix.platform }}
           push: false
-          tags: ozon-to-google-sheets:ci-${{ github.sha }}-${{ matrix.architecture }}
+          tags: ozon-to-google-sheets:ci-${{ needs.release_metadata.outputs.commit }}-${{ matrix.architecture }}
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ozon-to-google-sheets:ci-${{ github.sha }}-${{ matrix.architecture }}
+          image-ref: ozon-to-google-sheets:ci-${{ needs.release_metadata.outputs.commit }}-${{ matrix.architecture }}
           version: v0.73.0
           scanners: vuln
           severity: HIGH,CRITICAL
@@ -221,18 +283,24 @@ jobs:
       - name: Publish verified image
         env:
           IMAGE_NAME: ${{ steps.image.outputs.name }}
-          LOCAL_IMAGE: ozon-to-google-sheets:ci-${{ github.sha }}-${{ matrix.architecture }}
-          PLATFORM_TAG: sha-${{ github.sha }}-${{ matrix.architecture }}
+          LOCAL_IMAGE: ozon-to-google-sheets:ci-${{ needs.release_metadata.outputs.commit }}-${{ matrix.architecture }}
+          PLATFORM_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.architecture }}
         run: |
           docker tag "$LOCAL_IMAGE" "$IMAGE_NAME:$PLATFORM_TAG"
           docker push "$IMAGE_NAME:$PLATFORM_TAG"
 
   publish-image:
-    name: Publish multi-architecture main image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: publish-platform-images
+    name: Publish multi-architecture SemVer image
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - publish-platform-images
+      - release_metadata
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: ghcr-release-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       packages: write
@@ -241,6 +309,25 @@ jobs:
       image_digest: ${{ steps.published_image.outputs.digest }}
 
     steps:
+      - name: Check out release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Confirm release is still the latest stable tag
+        run: |
+          git fetch origin +refs/heads/main:refs/remotes/origin/main --tags
+          highest_tag="$(
+            git tag --merged origin/main --list 'v*' |
+              grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
+              sort -V |
+              tail -n 1
+          )"
+          if [[ "$highest_tag" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::A newer stable release tag exists on main: $highest_tag."
+            exit 1
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
@@ -262,36 +349,86 @@ jobs:
           IMAGE_NAME: ghcr.io/${{ github.repository }}
         run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish verified multi-architecture image
+      - name: Create verified multi-architecture candidate
+        id: candidate
         env:
           IMAGE_NAME: ${{ steps.image.outputs.name }}
         run: |
           docker buildx imagetools create \
-            --tag "$IMAGE_NAME:sha-$GITHUB_SHA" \
-            --tag "$IMAGE_NAME:latest" \
-            "$IMAGE_NAME:sha-$GITHUB_SHA-amd64" \
-            "$IMAGE_NAME:sha-$GITHUB_SHA-arm64"
-          docker buildx imagetools inspect "$IMAGE_NAME:sha-$GITHUB_SHA" \
+            --tag "$IMAGE_NAME:candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            "$IMAGE_NAME:staging-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-amd64" \
+            "$IMAGE_NAME:staging-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-arm64"
+          docker buildx imagetools inspect \
+            "$IMAGE_NAME:candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             --raw > "$RUNNER_TEMP/image-manifest.json"
           jq -e '
             [.manifests[].platform | "\(.os)/\(.architecture)"] | sort ==
             ["linux/amd64", "linux/arm64"]
           ' "$RUNNER_TEMP/image-manifest.json"
+          candidate_digest="$(
+            oras resolve "$IMAGE_NAME:candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          )"
+          printf '%s\n' "$candidate_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          echo "digest=$candidate_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable release aliases and latest
+        env:
+          CANDIDATE_DIGEST: ${{ steps.candidate.outputs.digest }}
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          RELEASE_COMMIT: ${{ needs.release_metadata.outputs.commit }}
+          RELEASE_VERSION: ${{ needs.release_metadata.outputs.version }}
+        run: |
+          check_immutable_alias() {
+            alias="$1"
+            error_file="$RUNNER_TEMP/oras-$alias.err"
+            if existing_digest="$(oras resolve "$IMAGE_NAME:$alias" 2> "$error_file")"; then
+              if [[ "$existing_digest" != "$CANDIDATE_DIGEST" ]]; then
+                echo "::error::Refusing to change immutable tag $alias from $existing_digest to $CANDIDATE_DIGEST."
+                exit 1
+              fi
+            elif ! grep -Eqi '404|manifest unknown|manifest_unknown|name unknown|name_unknown|not found' "$error_file"; then
+              cat "$error_file" >&2
+              echo "::error::Could not safely verify whether $IMAGE_NAME:$alias already exists."
+              exit 1
+            fi
+          }
+
+          check_immutable_alias "$RELEASE_VERSION"
+          check_immutable_alias "sha-$RELEASE_COMMIT"
+          oras tag --concurrency 1 \
+            "$IMAGE_NAME@$CANDIDATE_DIGEST" \
+            "$RELEASE_VERSION" \
+            "sha-$RELEASE_COMMIT"
+
+          version_digest="$(oras resolve "$IMAGE_NAME:$RELEASE_VERSION")"
+          commit_digest="$(oras resolve "$IMAGE_NAME:sha-$RELEASE_COMMIT")"
+          test "$version_digest" = "$CANDIDATE_DIGEST"
+          test "$commit_digest" = "$CANDIDATE_DIGEST"
+
+          oras tag "$IMAGE_NAME@$CANDIDATE_DIGEST" latest
 
       - name: Resolve published image digest
         id: published_image
         env:
+          CANDIDATE_DIGEST: ${{ steps.candidate.outputs.digest }}
           IMAGE_NAME: ${{ steps.image.outputs.name }}
+          RELEASE_COMMIT: ${{ needs.release_metadata.outputs.commit }}
+          RELEASE_VERSION: ${{ needs.release_metadata.outputs.version }}
         run: |
-          digest="$(oras resolve "${IMAGE_NAME}:sha-${GITHUB_SHA}")"
-          latest_digest="$(oras resolve "${IMAGE_NAME}:latest")"
-          printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
-          test "$latest_digest" = "$digest"
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          version_digest="$(oras resolve "$IMAGE_NAME:$RELEASE_VERSION")"
+          commit_digest="$(oras resolve "$IMAGE_NAME:sha-$RELEASE_COMMIT")"
+          latest_digest="$(oras resolve "$IMAGE_NAME:latest")"
+          printf '%s\n' "$version_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          test "$version_digest" = "$CANDIDATE_DIGEST"
+          test "$commit_digest" = "$CANDIDATE_DIGEST"
+          test "$latest_digest" = "$CANDIDATE_DIGEST"
+          echo "digest=$CANDIDATE_DIGEST" >> "$GITHUB_OUTPUT"
 
   update-image-reference:
     name: Update Compose image reference
-    needs: publish-image
+    needs:
+      - publish-image
+      - release_metadata
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -301,6 +438,7 @@ jobs:
     env:
       IMAGE_NAME: ${{ needs.publish-image.outputs.image_name }}
       IMAGE_DIGEST: ${{ needs.publish-image.outputs.image_digest }}
+      IMAGE_VERSION: ${{ needs.release_metadata.outputs.version }}
 
     steps:
       - name: Check out develop
@@ -310,7 +448,7 @@ jobs:
 
       - name: Pin Compose image to the published digest
         run: |
-          image_reference="${IMAGE_NAME}:sha-${GITHUB_SHA}@${IMAGE_DIGEST}"
+          image_reference="${IMAGE_NAME}:${IMAGE_VERSION}@${IMAGE_DIGEST}"
           if ! grep -Fq "@$IMAGE_DIGEST\"" docker-compose.yml; then
             sed -i "s|^    image: .*|    image: \"$image_reference\"|" docker-compose.yml
           fi
@@ -328,7 +466,8 @@ jobs:
           commit-message: "change: update Compose image digest"
           title: "change: update Compose image digest"
           body: |
-            Pin Docker Compose to the image built from `${{ github.sha }}` and its verified GHCR digest.
+            Pin Docker Compose to release `${{ needs.release_metadata.outputs.version }}` built from
+            `${{ needs.release_metadata.outputs.commit }}` and its verified GHCR digest.
           delete-branch: true
 
       - name: Run CI for the image update
