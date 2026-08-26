@@ -7,7 +7,7 @@
 **Русский** · [English](https://github.com/sotchenkov/ozon_to_google_sheets/blob/main/README.en.md)
 
 [![CI](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/sotchenkov/ozon_to_google_sheets/graph/badge.svg)](https://app.codecov.io/gh/sotchenkov/ozon_to_google_sheets)
+[![Coverage ≥95%](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen?style=flat-square)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
 [![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: Elastic 2.0](https://img.shields.io/badge/license-Elastic%202.0-005571?style=flat-square)](LICENSE)
@@ -325,8 +325,8 @@ OZON_ENV_FILE=.env.example docker compose config --quiet
 ```
 
 Для каждого pull request и push в `develop` или `main` CI запускает Python-проверки и проверяет
-конфигурацию Compose. Покрытие тестами из запуска на Python 3.14 отправляется в Codecov. Остальные
-проверки и публикация контейнера описаны в workflow CI.
+конфигурацию Compose. Тесты требуют покрытия не ниже 95%: падение ниже порога останавливает CI.
+Остальные проверки и публикация контейнера описаны в workflow CI.
 
 ## Помощь и поддержка
 
