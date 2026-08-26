@@ -1,0 +1,12 @@
+{
+  "accruals": [
+    {
+      "accrual_id": 910011,
+      "accrued_category": "NON_ITEM",
+      "date": "2026-08-21",
+      "unit_number": "service-test-0011",
+      "total_amount": {"amount": "-2.00", "currency": "RUB"}
+    }
+  ],
+  "last_id": ""
+}

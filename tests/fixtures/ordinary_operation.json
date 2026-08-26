@@ -1,0 +1,32 @@
+{
+  "accruals": [
+    {
+      "accrual_id": 910001,
+      "accrued_category": "POSTING",
+      "date": "2026-08-20T10:15:00Z",
+      "unit_number": "posting-test-0001",
+      "total_amount": {"amount": "82.50", "currency": "RUB"},
+      "posting": {
+        "delivery_schema": "FBO",
+        "delivery_speed": 1,
+        "products": [
+          {
+            "sku": 100001,
+            "commission": {
+              "commission": {"amount": "-12.50", "currency": "RUB"},
+              "commission_ratio": "12.5",
+              "sale_amount": {"amount": "100.00", "currency": "RUB"},
+              "sale_commission": {"amount": "-12.50", "currency": "RUB"},
+              "seller_price": {"amount": "100.00", "currency": "RUB"}
+            },
+            "delivery": {
+              "services": [],
+              "total_accrued": {"amount": "-5.00", "currency": "RUB"}
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "last_id": ""
+}

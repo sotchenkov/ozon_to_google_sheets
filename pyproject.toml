@@ -1,0 +1,64 @@
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[project]
+name = "ozon-to-google-sheets"
+version = "0.1.0"
+description = "Export Ozon seller finance transactions to Google Sheets"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Alexey Sotchenkov" }]
+license = "Elastic-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "gspread>=6.2.1,<7",
+    "python-dotenv>=1.1,<2",
+    "requests>=2.28.2,<3",
+]
+
+[project.scripts]
+ozon-to-google-sheets = "ozon_to_google_sheets.application:main"
+
+[project.urls]
+Homepage = "https://github.com/sotchenkov/ozon_to_google_sheets"
+Repository = "https://github.com/sotchenkov/ozon_to_google_sheets"
+"Commercial support" = "https://t.me/sotchenkov"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<10",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.11,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "-q",
+    "--strict-config",
+    "--strict-markers",
+    "--cov=ozon_to_google_sheets",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=95",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["ozon_to_google_sheets"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
