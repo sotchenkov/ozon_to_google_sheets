@@ -91,6 +91,26 @@ def test_run_rejects_concurrent_sync_for_same_worksheet(
     ]
 
 
+def test_run_releases_synchronization_lock_after_success_and_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    service = StubService(result=[910001])
+    _patch_composition(monkeypatch, service)
+    config = _config(tmp_path)
+
+    assert application.run(config) == [910001]
+    assert application.run(config) == [910001]
+
+    service._failure = RuntimeError("synthetic synchronization failure")
+    with pytest.raises(RuntimeError, match="synthetic synchronization failure"):
+        application.run(config)
+
+    service._failure = None
+    assert application.run(config) == [910001]
+    assert service.run_calls == 4
+
+
 def test_main_loads_config_runs_once_and_returns_success(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

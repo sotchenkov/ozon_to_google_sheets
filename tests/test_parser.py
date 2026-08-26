@@ -199,25 +199,19 @@ def test_transformer_rejects_delivery_breakdown_mismatch() -> None:
         AccrualTransformer().transform(accrual, types, ())
 
 
-def test_transformer_preserves_type_missing_from_catalogue(caplog: Any) -> None:
-    accrual = AccrualPage.from_api(
-        {
-            "accruals": [
-                {
-                    "accrual_id": 45,
-                    "date": "2026-08-23",
-                    "total_amount": _money("-3.50"),
-                    "non_item_fee": _fee(999, "-3.50"),
-                }
-            ]
-        }
-    ).accruals
+def test_transformer_preserves_unknown_type_and_reconciles_total(
+    load_json_fixture: Any,
+    caplog: Any,
+) -> None:
+    accrual = AccrualPage.from_api(load_json_fixture("unknown_accrual_type.json")).accruals
 
     with caplog.at_level(logging.WARNING):
         rows = AccrualTransformer().transform(accrual, (), ())
 
     assert rows[0].other_accruals == Decimal("-3.50")
-    assert "type 999 (unknown)" in caplog.text
+    assert rows[0].amount == Decimal("-3.50")
+    assert rows[0].other_accruals == rows[0].amount
+    assert "type 599 (unknown)" in caplog.text
 
 
 def test_transformer_rejects_conflicting_type_catalogue() -> None:
