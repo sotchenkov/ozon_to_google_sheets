@@ -67,7 +67,7 @@ docker compose down
 ```
 
 The container loads the accruals into the selected worksheet and exits. The header is written to
-`A1:P1`, with data below it. Warnings and errors go to `logs/logs.log`.
+`A1:U1`, with data below it. Warnings and errors go to `logs/logs.log`.
 
 ### Run without Docker
 
@@ -163,22 +163,26 @@ The container returns the application's exit code. The quick-start command propa
 
 ## Example sheet
 
-The application writes the following Russian column names:
+The application works with the single configured worksheet. It neither creates nor requires a
+separate type-mapping worksheet: categorization is built into the application.
 
-| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | За продажу или возврат до вычета комиссий и услуг | Ставка комиссии | Комиссия за продажу | Последняя миля | Обработка возврата | Обработка отменённого или невостребованного товара | Логистика | Обратная логистика | Прочие или неизвестные начисления | Итого |
-| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -5.00 | 0 | 0 | -7.00 | 0 | 0 | 123.00 |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 |  |
+| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | Выручка | Ставка комиссии | Комиссия Ozon | Логистика | Последняя миля | Обратная логистика | Возвраты и отмены | Реклама | Эквайринг | Хранение | Упаковка | Другие услуги | Компенсации | Неопознанные начисления | Итого Ozon |
+| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -7.00 | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 123.00 |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 
 One Ozon operation may include several SKUs, so its ID appears in several rows. Ozon supplies the
 total for the whole operation rather than for each SKU: the application writes it to the first row
 and leaves it empty in the others. A normal sum of the column therefore counts the operation once.
 
-### Unknown accruals and reconciliation
+### Categories, unknown accruals, and reconciliation
 
-Types that do not yet have a dedicated column are stored in `Прочие или неизвестные начисления`
-(`Other or unknown accruals`) and produce a warning in the log. The same column receives the
-operation amount when Ozon does not provide a monetary breakdown.
+Known accruals are assigned to separate business categories: logistics, last mile, reverse
+logistics, returns and cancellations, advertising, acquiring, storage, packaging, other services,
+and compensation. Only types unknown to the application are stored in `Неопознанные начисления`
+(`Unrecognized accruals`). The corresponding log warning includes the original `type_id` and
+`type_name`. The same column receives the operation amount when Ozon does not provide a monetary
+breakdown.
 
 Before writing, the application reconciles the sum of every monetary field in an operation with
 Ozon's total. If they differ, the current date is not written and the run exits with code `1`.
@@ -189,11 +193,13 @@ report in Ozon Seller.
 
 You can run the project repeatedly: existing operations are updated, new ones are appended, and
 operations for other dates remain in the worksheet. Manual edits in the export worksheet may be
-overwritten, so keep formulas and comments in a separate worksheet.
+overwritten inside the `A:U` export range.
 
 An empty worksheet receives the header automatically even if Ozon returns no accruals. Such a run
 is successful. If the first row already contains another schema, the application stops without
 changing the worksheet.
+
+Schemas used before version `0.1.0` are unsupported and are not migrated automatically.
 
 A long period is processed one day at a time. If one day fails, earlier days remain saved and the
 failing day is not written. The log states the date from which you can resume by setting
