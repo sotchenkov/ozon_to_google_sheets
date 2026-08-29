@@ -85,7 +85,7 @@ uv run --no-sync ozon-to-google-sheets
 1. Open [Ozon Seller](https://seller.ozon.ru/) and go to the Seller API settings.
 2. Copy the **Client ID** and use it as `OZON_CLIENT_ID`.
 3. Create an API key with access to financial data and use it as `OZON_TOKEN`.
-4. If several roles are available, choose the minimum read-only role.
+4. If several roles are available, choose the least-privileged read-only role.
 
 Dashboard labels may change. See the current
 [Ozon Seller API documentation](https://docs.ozon.ru/api/seller/).
@@ -183,8 +183,8 @@ stored in `Неопознанные начисления`
 the data is not written.
 
 Before writing, the application reconciles the sum of every monetary field in an operation with
-Ozon's total. If they differ, the current date is not written and the run exits with code `1`.
-Review warnings and errors in `logs/logs.log`, then compare the period total with the financial
+Ozon's total. If they differ, no data for the current date is written and the run exits with code
+`1`. Review warnings and errors in `logs/logs.log`, then compare the period total with the financial
 report in Ozon Seller.
 
 ## Repeated runs
@@ -197,8 +197,8 @@ An empty worksheet receives the header automatically even if Ozon returns no acc
 is successful. If the first row already contains another schema, the application stops without
 changing the worksheet.
 
-A long period is processed one day at a time. If one day fails, earlier days remain saved and the
-failing day is not written. The log states the date from which you can resume by setting
+A multi-day period is processed one day at a time. If one day fails, earlier days remain saved and
+the failing day is not written. The log states the date from which you can resume by setting
 `OZON_DATE_FROM`.
 
 ## Scheduled runs
@@ -272,8 +272,8 @@ sudo chmod 750 logs
 ```
 
 The container needs read access to `secrets/google-service-account.json` and write access to
-`logs/`. The default `644` for other files and `755` for directories is sufficient. Do not use
-`chmod 777`.
+`logs/`. The default permissions—`644` for other files and `755` for directories—are sufficient. Do
+not use `chmod 777`.
 
 ## Security
 
@@ -293,7 +293,7 @@ The container needs read access to `secrets/google-service-account.json` and wri
 | `Unexpected header` | The first row matches the expected schema or the worksheet is empty |
 | Ozon 401/403 | Client ID, API key, and key permissions |
 | Ozon 429/5xx | Retry later; the application already makes up to three attempts |
-| Docker `Permission denied` | UID/GID `10001` can read `secrets` and write to `logs` |
+| Docker `Permission denied` | The process running under UID/GID `10001` can read `secrets/` and write to `logs/` |
 | `Another synchronization is already running` | Wait for the active run; check cron and systemd for duplicate jobs |
 
 If you need to share application logs, remove tokens, keys, seller IDs, and customer data first.
