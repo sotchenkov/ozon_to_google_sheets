@@ -27,7 +27,9 @@ DETAIL_FIELDS = (
     "acquiring",
     "storage",
     "packaging",
-    "other_services",
+    "supply_inbound",
+    "disposal",
+    "cross_dock",
     "compensations",
     "unrecognized_accruals",
 )
@@ -50,9 +52,9 @@ ACCRUAL_TYPE_FIELDS: Mapping[str, str] = {
     "ItemPacking": "packaging",
     "PackingFee": "packaging",
     "PackageCost": "packaging",
-    "SupplyInbound": "other_services",
-    "Disposal": "other_services",
-    "CrossDock": "other_services",
+    "SupplyInbound": "supply_inbound",
+    "Disposal": "disposal",
+    "CrossDock": "cross_dock",
     "Compensation": "compensations",
     "ItemCompensation": "compensations",
 }

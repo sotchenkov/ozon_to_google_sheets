@@ -67,7 +67,7 @@ docker compose down
 ```
 
 The container loads the accruals into the selected worksheet and exits. The header is written to
-`A1:U1`, with data below it. Warnings and errors go to `logs/logs.log`.
+`A1:W1`, with data below it. Warnings and errors go to `logs/logs.log`.
 
 ### Run without Docker
 
@@ -163,10 +163,10 @@ The container returns the application's exit code. The quick-start command propa
 
 ## Example sheet
 
-| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | Выручка | Ставка комиссии | Комиссия Ozon | Логистика | Последняя миля | Обратная логистика | Возвраты и отмены | Реклама | Эквайринг | Хранение | Упаковка | Прочие | Компенсации | Неопознанные начисления | Итого |
-| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -7.00 | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 123.00 |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
+| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | Выручка | Ставка комиссии | Комиссия Ozon | Логистика | Последняя миля | Обратная логистика | Возвраты и отмены | Реклама | Эквайринг | Хранение | Упаковка | Приёмка поставки | Утилизация | Кросс-докинг | Компенсации | Неопознанные начисления | Итого |
+| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -7.00 | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 123.00 |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 
 One Ozon operation may include several SKUs, so its ID appears in several rows. Ozon supplies the
 total for the whole operation rather than for each SKU: the application writes it to the first row
@@ -175,8 +175,9 @@ and leaves it empty in the others. A normal sum of the column therefore counts t
 ### Categories, unknown accruals, and reconciliation
 
 Known accruals are assigned to separate business categories: logistics, last mile, reverse
-logistics, returns and cancellations, advertising, acquiring, storage, packaging, miscellaneous,
-and compensation. Only types unknown to the application are stored in `Неопознанные начисления`
+logistics, returns and cancellations, advertising, acquiring, storage, packaging, inbound supply
+acceptance, disposal, cross-docking, and compensation. Only types unknown to the application are
+stored in `Неопознанные начисления`
 (`Unrecognized accruals`). The corresponding log warning includes the original `type_id` and
 `type_name`. If Ozon does not provide an operation's monetary breakdown, reconciliation fails and
 the data is not written.
@@ -190,7 +191,7 @@ report in Ozon Seller.
 
 You can run the project repeatedly: existing operations are updated, new ones are appended, and
 operations for other dates remain in the worksheet. Manual edits in the export worksheet may be
-overwritten inside the `A:U` export range.
+overwritten inside the `A:W` export range.
 
 An empty worksheet receives the header automatically even if Ozon returns no accruals. Such a run
 is successful. If the first row already contains another schema, the application stops without

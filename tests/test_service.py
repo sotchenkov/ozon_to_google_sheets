@@ -63,7 +63,7 @@ def test_service_deduplication_keeps_latest_payload(
     assert operation_ids == [910001]
     assert len(sheet.rows) == 1
     assert sheet.rows[0][2] == "CORRECTED"
-    assert sheet.rows[0][20] == 82.5
+    assert sheet.rows[0][22] == 82.5
 
 
 def test_service_stops_before_sheet_when_type_request_fails(

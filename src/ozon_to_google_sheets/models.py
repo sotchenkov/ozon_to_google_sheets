@@ -27,7 +27,9 @@ USER_TRANSACTION_SHEET_SCHEMA = (
     ("acquiring", "Эквайринг"),
     ("storage", "Хранение"),
     ("packaging", "Упаковка"),
-    ("other_services", "Прочие"),
+    ("supply_inbound", "Приёмка поставки"),
+    ("disposal", "Утилизация"),
+    ("cross_dock", "Кросс-докинг"),
     ("compensations", "Компенсации"),
     ("unrecognized_accruals", "Неопознанные начисления"),
     ("amount", "Итого"),
@@ -349,7 +351,9 @@ class TransactionRow:
     acquiring: Decimal = Decimal("0")
     storage: Decimal = Decimal("0")
     packaging: Decimal = Decimal("0")
-    other_services: Decimal = Decimal("0")
+    supply_inbound: Decimal = Decimal("0")
+    disposal: Decimal = Decimal("0")
+    cross_dock: Decimal = Decimal("0")
     compensations: Decimal = Decimal("0")
     unrecognized_accruals: Decimal = Decimal("0")
     amount: Decimal = Decimal("0")
