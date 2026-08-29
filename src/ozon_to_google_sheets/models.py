@@ -27,10 +27,10 @@ USER_TRANSACTION_SHEET_SCHEMA = (
     ("acquiring", "Эквайринг"),
     ("storage", "Хранение"),
     ("packaging", "Упаковка"),
-    ("other_services", "Другие услуги"),
+    ("other_services", "Прочие"),
     ("compensations", "Компенсации"),
     ("unrecognized_accruals", "Неопознанные начисления"),
-    ("amount", "Итого Ozon"),
+    ("amount", "Итого"),
 )
 TRANSACTION_SHEET_SCHEMA = (
     ("operation_id", "ID операции"),

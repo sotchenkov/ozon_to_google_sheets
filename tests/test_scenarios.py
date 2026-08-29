@@ -46,7 +46,7 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert sheet_values["Выручка"] == 100.0
     assert sheet_values["Ставка комиссии"] == "12.5%"
     assert sheet_values["Комиссия Ozon"] == -12.5
-    assert sheet_values["Итого Ozon"] == 82.5
+    assert sheet_values["Итого"] == 82.5
 
 
 def test_multiple_products_keep_quantities_and_parent_total_once(

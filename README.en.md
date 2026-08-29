@@ -163,10 +163,7 @@ The container returns the application's exit code. The quick-start command propa
 
 ## Example sheet
 
-The application works with the single configured worksheet. It neither creates nor requires a
-separate type-mapping worksheet: categorization is built into the application.
-
-| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | Выручка | Ставка комиссии | Комиссия Ozon | Логистика | Последняя миля | Обратная логистика | Возвраты и отмены | Реклама | Эквайринг | Хранение | Упаковка | Другие услуги | Компенсации | Неопознанные начисления | Итого Ozon |
+| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | Выручка | Ставка комиссии | Комиссия Ozon | Логистика | Последняя миля | Обратная логистика | Возвраты и отмены | Реклама | Эквайринг | Хранение | Упаковка | Прочие | Компенсации | Неопознанные начисления | Итого |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -7.00 | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 123.00 |
 | 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
@@ -178,7 +175,7 @@ and leaves it empty in the others. A normal sum of the column therefore counts t
 ### Categories, unknown accruals, and reconciliation
 
 Known accruals are assigned to separate business categories: logistics, last mile, reverse
-logistics, returns and cancellations, advertising, acquiring, storage, packaging, other services,
+logistics, returns and cancellations, advertising, acquiring, storage, packaging, miscellaneous,
 and compensation. Only types unknown to the application are stored in `Неопознанные начисления`
 (`Unrecognized accruals`). The corresponding log warning includes the original `type_id` and
 `type_name`. If Ozon does not provide an operation's monetary breakdown, reconciliation fails and

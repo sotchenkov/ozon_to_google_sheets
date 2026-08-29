@@ -181,10 +181,10 @@ def test_transaction_sheet_header_is_the_exact_russian_user_schema() -> None:
         "Эквайринг",
         "Хранение",
         "Упаковка",
-        "Другие услуги",
+        "Прочие",
         "Компенсации",
         "Неопознанные начисления",
-        "Итого Ozon",
+        "Итого",
     )
     assert TRANSACTION_SHEET_HEADER[1:] == USER_TRANSACTION_SHEET_HEADER
     assert len(USER_TRANSACTION_SHEET_HEADER) == 20
