@@ -333,7 +333,7 @@ def test_service_orchestrates_new_operations() -> None:
         ("postings", endpoint, ("posting-for-test",)),
     ]
     assert sheet.operation_ids == [42]
-    assert len(sheet.rows[0]) == 16
+    assert len(sheet.rows[0]) == 21
     assert sheet.rows[0][0] == 42
     assert sheet.rows[0][3] == "posting-for-test"
     assert sheet.rows[0][5] == 2

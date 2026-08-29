@@ -7,80 +7,6 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-LEGACY_TRANSACTION_COLUMNS = (
-    "operation_date",
-    "operation_type_name",
-    "operation_id",
-    "posting_number",
-    "order_date",
-    "delivery_schema",
-    "sku",
-    "name",
-    "count",
-    "accruals_for_sale",
-    "sale_commission_percents",
-    "sale_commission",
-    "order_assembly",
-    "shipment_processing",
-    "highway",
-    "last_mile",
-    "reverse_highway",
-    "refund_processing",
-    "processing_of_cancelled_or_unclaimed_item",
-    "processing_of_unbought_item",
-    "logistics",
-    "reverse_logistics",
-    "amount",
-)
-
-LEGACY_USER_TRANSACTION_SHEET_HEADER = (
-    "Дата начисления",
-    "Тип начисления",
-    "Номер отправления или идентификатор услуги",
-    "Дата принятия заказа в обработку или оказания услуги",
-    "Склад отгрузки",
-    "SKU",
-    "Артикул",
-    "Название товара или услуги",
-    "Количество",
-    "За продажу или возврат до вычета комиссий и услуг",
-    "Ставка комиссии",
-    "Комиссия за продажу",
-    "Сборка заказа",
-    "Обработка отправления",
-    "Магистраль",
-    "Последняя миля",
-    "Обратная магистраль",
-    "Обработка возврата",
-    "Обработка отменённого или невостребованного товара",
-    "Обработка невыкупленного товара",
-    "Логистика",
-    "Обратная логистика",
-    "Итого",
-)
-
-PREVIOUS_USER_TRANSACTION_SHEET_HEADER = (
-    "Дата начисления",
-    "Тип начисления",
-    "Номер отправления или идентификатор услуги",
-    "SKU",
-    "Количество",
-    "За продажу или возврат до вычета комиссий и услуг",
-    "Ставка комиссии",
-    "Комиссия за продажу",
-    "Сборка заказа",
-    "Обработка отправления",
-    "Магистраль",
-    "Последняя миля",
-    "Обратная магистраль",
-    "Обработка возврата",
-    "Обработка отменённого или невостребованного товара",
-    "Обработка невыкупленного товара",
-    "Логистика",
-    "Обратная логистика",
-    "Итого",
-)
-
 USER_TRANSACTION_SHEET_SCHEMA = (
     ("operation_date", "Дата начисления"),
     ("operation_type_name", "Тип начисления"),
@@ -89,20 +15,22 @@ USER_TRANSACTION_SHEET_SCHEMA = (
     ("count", "Количество"),
     (
         "accruals_for_sale",
-        "За продажу или возврат до вычета комиссий и услуг",
+        "Выручка",
     ),
     ("sale_commission_percents", "Ставка комиссии"),
-    ("sale_commission", "Комиссия за продажу"),
-    ("last_mile", "Последняя миля"),
-    ("refund_processing", "Обработка возврата"),
-    (
-        "processing_of_cancelled_or_unclaimed_item",
-        "Обработка отменённого или невостребованного товара",
-    ),
+    ("sale_commission", "Комиссия Ozon"),
     ("logistics", "Логистика"),
+    ("last_mile", "Последняя миля"),
     ("reverse_logistics", "Обратная логистика"),
-    ("other_accruals", "Прочие или неизвестные начисления"),
-    ("amount", "Итого"),
+    ("returns_and_cancellations", "Возвраты и отмены"),
+    ("advertising", "Реклама"),
+    ("acquiring", "Эквайринг"),
+    ("storage", "Хранение"),
+    ("packaging", "Упаковка"),
+    ("other_services", "Другие услуги"),
+    ("compensations", "Компенсации"),
+    ("unrecognized_accruals", "Неопознанные начисления"),
+    ("amount", "Итого Ozon"),
 )
 TRANSACTION_SHEET_SCHEMA = (
     ("operation_id", "ID операции"),
@@ -413,12 +341,17 @@ class TransactionRow:
     accruals_for_sale: Decimal = Decimal("0")
     sale_commission_percents: str = ""
     sale_commission: Decimal = Decimal("0")
-    last_mile: Decimal = Decimal("0")
-    refund_processing: Decimal = Decimal("0")
-    processing_of_cancelled_or_unclaimed_item: Decimal = Decimal("0")
     logistics: Decimal = Decimal("0")
+    last_mile: Decimal = Decimal("0")
     reverse_logistics: Decimal = Decimal("0")
-    other_accruals: Decimal = Decimal("0")
+    returns_and_cancellations: Decimal = Decimal("0")
+    advertising: Decimal = Decimal("0")
+    acquiring: Decimal = Decimal("0")
+    storage: Decimal = Decimal("0")
+    packaging: Decimal = Decimal("0")
+    other_services: Decimal = Decimal("0")
+    compensations: Decimal = Decimal("0")
+    unrecognized_accruals: Decimal = Decimal("0")
     amount: Decimal = Decimal("0")
     operation_id: int = 0
 
