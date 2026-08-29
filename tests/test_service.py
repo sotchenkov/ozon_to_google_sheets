@@ -122,7 +122,7 @@ def test_service_commits_each_backfill_day_independently(
                     "accrual_id": 910002,
                     "date": "2026-08-21",
                     "unit_number": "service-test-0002",
-                    "total_amount": {"amount": "-2", "currency": "RUB"},
+                    "total_amount": {"amount": "0", "currency": "RUB"},
                 }
             ]
         }
@@ -261,7 +261,7 @@ def _daily_accrual(accrual_id: int, current_day: date) -> tuple[Accrual, ...]:
                     "accrued_category": "NON_ITEM",
                     "date": current_day.isoformat(),
                     "unit_number": f"service-test-{accrual_id}",
-                    "total_amount": {"amount": "-1.00", "currency": "RUB"},
+                    "total_amount": {"amount": "0", "currency": "RUB"},
                 }
             ]
         }

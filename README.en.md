@@ -181,8 +181,8 @@ Known accruals are assigned to separate business categories: logistics, last mil
 logistics, returns and cancellations, advertising, acquiring, storage, packaging, other services,
 and compensation. Only types unknown to the application are stored in `Неопознанные начисления`
 (`Unrecognized accruals`). The corresponding log warning includes the original `type_id` and
-`type_name`. The same column receives the operation amount when Ozon does not provide a monetary
-breakdown.
+`type_name`. If Ozon does not provide an operation's monetary breakdown, reconciliation fails and
+the data is not written.
 
 Before writing, the application reconciles the sum of every monetary field in an operation with
 Ozon's total. If they differ, the current date is not written and the run exits with code `1`.

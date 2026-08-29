@@ -159,6 +159,26 @@ def test_transformer_rejects_parent_total_mismatch() -> None:
         AccrualTransformer().transform(accrual, types, ())
 
 
+def test_transformer_rejects_nonzero_operation_without_monetary_breakdown() -> None:
+    accrual = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 45,
+                    "date": "2026-08-23",
+                    "total_amount": _money("-4.00"),
+                }
+            ]
+        }
+    ).accruals
+
+    with pytest.raises(
+        AccrualIntegrityError,
+        match=r"operation 45 detail total 0.*total_amount -4\.00.*difference -4\.00",
+    ):
+        AccrualTransformer().transform(accrual, (), ())
+
+
 def test_transformer_rejects_delivery_breakdown_mismatch() -> None:
     accrual = AccrualPage.from_api(
         {

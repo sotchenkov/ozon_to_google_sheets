@@ -32,7 +32,8 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert row.accruals_for_sale == Decimal("100.00")
     assert row.sale_commission_percents == "12.5%"
     assert row.sale_commission == Decimal("-12.50")
-    assert row.unrecognized_accruals == Decimal("-5.00")
+    assert row.logistics == Decimal("-5.00")
+    assert row.unrecognized_accruals == Decimal("0")
     assert row.amount == Decimal("82.50")
 
     sheet_values = dict(zip(TRANSACTION_SHEET_HEADER, row.as_list(), strict=True))

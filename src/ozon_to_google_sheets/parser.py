@@ -110,15 +110,6 @@ class AccrualTransformer:
         self._apply_fees(rows[0], accrual.container_fees, type_names)
 
         detail_total = _detail_total(rows)
-        if detail_total == 0 and accrual.total_amount.amount != 0 and not _has_details(accrual):
-            rows[0].unrecognized_accruals = accrual.total_amount.amount
-            detail_total = accrual.total_amount.amount
-            self._logger.warning(
-                "Ozon operation %s has no monetary breakdown; "
-                "its total was stored as unrecognized accruals",
-                accrual.accrual_id,
-            )
-
         if detail_total != accrual.total_amount.amount:
             difference = accrual.total_amount.amount - detail_total
             raise AccrualIntegrityError(
@@ -209,10 +200,10 @@ class AccrualTransformer:
             return
 
         if total.amount != 0:
-            row.unrecognized_accruals += total.amount
+            row.logistics += total.amount
             self._logger.warning(
                 "Ozon operation %s has delivery total %s without service details for SKU %s; "
-                "it was stored as unrecognized accruals",
+                "it was stored as logistics",
                 operation_id,
                 total.amount,
                 product.sku,
@@ -248,13 +239,4 @@ def _detail_total(rows: Sequence[TransactionRow]) -> Decimal:
     return sum(
         (getattr(row, field) for row in rows for field in DETAIL_FIELDS),
         start=Decimal("0"),
-    )
-
-
-def _has_details(accrual: Accrual) -> bool:
-    return bool(
-        accrual.posting.products
-        or accrual.item_fees
-        or accrual.non_item_fee
-        or accrual.container_fees
     )

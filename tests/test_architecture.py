@@ -389,5 +389,5 @@ def _non_item_accrual(accrual_id: int) -> dict[str, Any]:
         "accrued_category": "NON_ITEM",
         "date": "2026-08-23",
         "unit_number": "service-contract",
-        "total_amount": {"amount": "-1", "currency": "RUB"},
+        "total_amount": {"amount": "0", "currency": "RUB"},
     }
