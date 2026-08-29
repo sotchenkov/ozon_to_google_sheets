@@ -67,7 +67,7 @@ docker compose down
 ```
 
 The container loads the accruals into the selected worksheet and exits. The header is written to
-`A1:P1`, with data below it. Warnings and errors go to `logs/logs.log`.
+`A1:W1`, with data below it. Warnings and errors go to `logs/logs.log`.
 
 ### Run without Docker
 
@@ -85,7 +85,7 @@ uv run --no-sync ozon-to-google-sheets
 1. Open [Ozon Seller](https://seller.ozon.ru/) and go to the Seller API settings.
 2. Copy the **Client ID** and use it as `OZON_CLIENT_ID`.
 3. Create an API key with access to financial data and use it as `OZON_TOKEN`.
-4. If several roles are available, choose the minimum read-only role.
+4. If several roles are available, choose the least-privileged read-only role.
 
 Dashboard labels may change. See the current
 [Ozon Seller API documentation](https://docs.ozon.ru/api/seller/).
@@ -163,40 +163,42 @@ The container returns the application's exit code. The quick-start command propa
 
 ## Example sheet
 
-The application writes the following Russian column names:
-
-| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | За продажу или возврат до вычета комиссий и услуг | Ставка комиссии | Комиссия за продажу | Последняя миля | Обработка возврата | Обработка отменённого или невостребованного товара | Логистика | Обратная логистика | Прочие или неизвестные начисления | Итого |
-| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -5.00 | 0 | 0 | -7.00 | 0 | 0 | 123.00 |
-| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 |  |
+| ID операции | Дата начисления | Тип начисления | Номер отправления или идентификатор услуги | SKU | Количество | Выручка | Ставка комиссии | Комиссия Ozon | Логистика | Последняя миля | Обратная логистика | Возвраты и отмены | Реклама | Эквайринг | Хранение | Упаковка | Приёмка поставки | Утилизация | Кросс-докинг | Компенсации | Неопознанные начисления | Итого |
+| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000001 | 2 | 100.00 | 10% | -10.00 | -7.00 | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 123.00 |
+| 910001 | 2026-01-15 | POSTING | posting-demo-0001 | 900000002 | 1 | 50.00 | 10% | -5.00 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 
 One Ozon operation may include several SKUs, so its ID appears in several rows. Ozon supplies the
 total for the whole operation rather than for each SKU: the application writes it to the first row
 and leaves it empty in the others. A normal sum of the column therefore counts the operation once.
 
-### Unknown accruals and reconciliation
+### Categories, unknown accruals, and reconciliation
 
-Types that do not yet have a dedicated column are stored in `Прочие или неизвестные начисления`
-(`Other or unknown accruals`) and produce a warning in the log. The same column receives the
-operation amount when Ozon does not provide a monetary breakdown.
+Known accruals are assigned to separate business categories: logistics, last mile, reverse
+logistics, returns and cancellations, advertising, acquiring, storage, packaging, inbound supply
+acceptance, disposal, cross-docking, and compensation. Only types unknown to the application are
+stored in `Неопознанные начисления`
+(`Unrecognized accruals`). The corresponding log warning includes the original `type_id` and
+`type_name`. If Ozon does not provide an operation's monetary breakdown, reconciliation fails and
+the data is not written.
 
 Before writing, the application reconciles the sum of every monetary field in an operation with
-Ozon's total. If they differ, the current date is not written and the run exits with code `1`.
-Review warnings and errors in `logs/logs.log`, then compare the period total with the financial
+Ozon's total. If they differ, no data for the current date is written and the run exits with code
+`1`. Review warnings and errors in `logs/logs.log`, then compare the period total with the financial
 report in Ozon Seller.
 
 ## Repeated runs
 
 You can run the project repeatedly: existing operations are updated, new ones are appended, and
 operations for other dates remain in the worksheet. Manual edits in the export worksheet may be
-overwritten, so keep formulas and comments in a separate worksheet.
+overwritten inside the `A:W` export range.
 
 An empty worksheet receives the header automatically even if Ozon returns no accruals. Such a run
 is successful. If the first row already contains another schema, the application stops without
 changing the worksheet.
 
-A long period is processed one day at a time. If one day fails, earlier days remain saved and the
-failing day is not written. The log states the date from which you can resume by setting
+A multi-day period is processed one day at a time. If one day fails, earlier days remain saved and
+the failing day is not written. The log states the date from which you can resume by setting
 `OZON_DATE_FROM`.
 
 ## Scheduled runs
@@ -270,8 +272,8 @@ sudo chmod 750 logs
 ```
 
 The container needs read access to `secrets/google-service-account.json` and write access to
-`logs/`. The default `644` for other files and `755` for directories is sufficient. Do not use
-`chmod 777`.
+`logs/`. The default permissions—`644` for other files and `755` for directories—are sufficient. Do
+not use `chmod 777`.
 
 ## Security
 
@@ -291,7 +293,7 @@ The container needs read access to `secrets/google-service-account.json` and wri
 | `Unexpected header` | The first row matches the expected schema or the worksheet is empty |
 | Ozon 401/403 | Client ID, API key, and key permissions |
 | Ozon 429/5xx | Retry later; the application already makes up to three attempts |
-| Docker `Permission denied` | UID/GID `10001` can read `secrets` and write to `logs` |
+| Docker `Permission denied` | The process running under UID/GID `10001` can read `secrets/` and write to `logs/` |
 | `Another synchronization is already running` | Wait for the active run; check cron and systemd for duplicate jobs |
 
 If you need to share application logs, remove tokens, keys, seller IDs, and customer data first.

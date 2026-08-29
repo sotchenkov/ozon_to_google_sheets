@@ -16,11 +16,7 @@ from ozon_to_google_sheets.google_sheets import (
     ReliableHTTPClient,
 )
 from ozon_to_google_sheets.models import (
-    LEGACY_TRANSACTION_COLUMNS,
-    LEGACY_USER_TRANSACTION_SHEET_HEADER,
-    PREVIOUS_USER_TRANSACTION_SHEET_HEADER,
     TRANSACTION_COLUMNS,
-    USER_TRANSACTION_SHEET_HEADER,
 )
 from tests.fakes import FakeGspreadClient, FakeWorksheet
 
@@ -264,11 +260,11 @@ def test_empty_upsert_initializes_header() -> None:
     GoogleSheetsAdapter(worksheet).upsert_rows([])
 
     assert worksheet.get_calls == [
-        {"range_name": "A1:P", "value_render_option": "UNFORMATTED_VALUE"}
+        {"range_name": "A1:W", "value_render_option": "UNFORMATTED_VALUE"}
     ]
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A1:P1", "values": [list(SHEET_HEADER)]}],
+            "data": [{"range": "A1:W1", "values": [list(SHEET_HEADER)]}],
             "value_input_option": "RAW",
         }
     ]
@@ -292,13 +288,13 @@ def test_empty_sheet_writes_header_and_every_product_in_one_batch() -> None:
     GoogleSheetsAdapter(worksheet).upsert_rows(rows)
 
     assert worksheet.get_calls == [
-        {"range_name": "A1:P", "value_render_option": "UNFORMATTED_VALUE"}
+        {"range_name": "A1:W", "value_render_option": "UNFORMATTED_VALUE"}
     ]
     assert worksheet.batch_update_calls == [
         {
             "data": [
                 {
-                    "range": "A1:P3",
+                    "range": "A1:W3",
                     "values": [list(SHEET_HEADER), *rows],
                 }
             ],
@@ -329,8 +325,8 @@ def test_upsert_preserves_partial_rows_and_appends_after_last_used_row() -> None
     assert worksheet.batch_update_calls == [
         {
             "data": [
-                {"range": "A3:P3", "values": [updated]},
-                {"range": "A6:P6", "values": [appended]},
+                {"range": "A3:W3", "values": [updated]},
+                {"range": "A6:W6", "values": [appended]},
             ],
             "value_input_option": "RAW",
         }
@@ -352,7 +348,7 @@ def test_upsert_clears_existing_count_when_incoming_quantity_is_unknown() -> Non
     assert incoming[count_index] is None
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A2:P2", "values": [expected]}],
+            "data": [{"range": "A2:W2", "values": [expected]}],
             "value_input_option": "RAW",
         }
     ]
@@ -389,7 +385,7 @@ def test_upsert_clears_duplicates_and_stale_products_idempotently() -> None:
         {
             "data": [
                 {
-                    "range": "A2:P4",
+                    "range": "A2:W4",
                     "values": [
                         incoming,
                         ["" for _ in SHEET_HEADER],
@@ -420,8 +416,8 @@ def test_upsert_groups_disjoint_duplicate_and_stale_ranges() -> None:
     assert worksheet.batch_update_calls == [
         {
             "data": [
-                {"range": "A3:P3", "values": [["" for _ in SHEET_HEADER]]},
-                {"range": "A5:P5", "values": [["" for _ in SHEET_HEADER]]},
+                {"range": "A3:W3", "values": [["" for _ in SHEET_HEADER]]},
+                {"range": "A5:W5", "values": [["" for _ in SHEET_HEADER]]},
             ],
             "value_input_option": "RAW",
         }
@@ -445,7 +441,7 @@ def test_numeric_sheet_identifiers_use_stable_text_keys() -> None:
     assert adapter.get_operation_ids() == ["42", "43"]
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A2:P2", "values": [_sheet_row(42, 1001)]}],
+            "data": [{"range": "A2:W2", "values": [_sheet_row(42, 1001)]}],
             "value_input_option": "RAW",
         }
     ]
@@ -459,7 +455,7 @@ def test_partial_matching_header_is_completed() -> None:
 
     assert worksheet.batch_update_calls == [
         {
-            "data": [{"range": "A1:P1", "values": [list(SHEET_HEADER)]}],
+            "data": [{"range": "A1:W1", "values": [list(SHEET_HEADER)]}],
             "value_input_option": "RAW",
         }
     ]
@@ -478,53 +474,11 @@ def test_mismatched_header_stops_before_writing() -> None:
 
 
 @pytest.mark.parametrize(
-    "legacy_header",
-    (
-        list(LEGACY_TRANSACTION_COLUMNS),
-        list(LEGACY_TRANSACTION_COLUMNS[:4]),
-        list(LEGACY_USER_TRANSACTION_SHEET_HEADER),
-        list(LEGACY_USER_TRANSACTION_SHEET_HEADER[:4]),
-        ["ID операции", *LEGACY_USER_TRANSACTION_SHEET_HEADER],
-        ["ID операции", *LEGACY_USER_TRANSACTION_SHEET_HEADER[:3]],
-        list(PREVIOUS_USER_TRANSACTION_SHEET_HEADER),
-        ["ID операции", *PREVIOUS_USER_TRANSACTION_SHEET_HEADER],
-        list(USER_TRANSACTION_SHEET_HEADER),
-    ),
-)
-def test_legacy_header_requires_explicit_migration(
-    legacy_header: list[str],
-) -> None:
-    old_row = [
-        "2026-08-23",
-        "POSTING",
-        42,
-        "posting-42",
-        "2026-08-23",
-        "FBO",
-        1001,
-        "",
-        2,
-        *("" for _ in range(14)),
-    ]
-    original_rows = [legacy_header, old_row]
-    worksheet = FakeWorksheet(original_rows)
-
-    with pytest.raises(
-        GoogleSheetsSchemaError,
-        match="legacy transaction header.*Back up the worksheet.*GOOGLE_WORKSHEET_ID",
-    ):
-        GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row(42, 1001)])
-
-    assert worksheet.rows == original_rows
-    assert worksheet.batch_update_calls == []
-
-
-@pytest.mark.parametrize(
     ("row", "message"),
     (
-        (["too", "short"], "has 2 columns; expected 16"),
+        (["too", "short"], "has 2 columns; expected 23"),
         (
-            ["", *("" for _ in range(15))],
+            ["", *("" for _ in range(22))],
             "must contain an operation_id",
         ),
     ),
@@ -630,7 +584,7 @@ def _sheet_row(
         count,
         "",
         marker,
-        *("" for _ in range(8)),
+        *("" for _ in range(15)),
     ]
 
 

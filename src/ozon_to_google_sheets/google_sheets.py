@@ -16,12 +16,8 @@ from gspread.exceptions import APIError
 from gspread.http_client import HTTPClient
 
 from .models import (
-    LEGACY_TRANSACTION_COLUMNS,
-    LEGACY_USER_TRANSACTION_SHEET_HEADER,
-    PREVIOUS_USER_TRANSACTION_SHEET_HEADER,
     TRANSACTION_COLUMNS,
     TRANSACTION_SHEET_HEADER,
-    USER_TRANSACTION_SHEET_HEADER,
 )
 
 
@@ -265,13 +261,6 @@ def _index_existing_rows(values: Sequence[Sequence[Any]]) -> dict[RowKey, list[i
 
 
 def _header_needs_update(header: Sequence[Any]) -> bool:
-    if _matches_legacy_header(header):
-        raise GoogleSheetsSchemaError(
-            "Worksheet uses a legacy transaction header. Automatic migration is "
-            "unsafe because the old columns can contain data. Back up the worksheet, "
-            "create a new empty worksheet, and set GOOGLE_WORKSHEET_ID to its gid."
-        )
-
     needs_update = len(header) < COLUMN_COUNT
     for index, expected in enumerate(SHEET_HEADER):
         actual = header[index] if index < len(header) else ""
@@ -290,37 +279,6 @@ def _row_key(row: Sequence[Any]) -> RowKey:
 
 def _operation_id(row: Sequence[Any]) -> str:
     return _identifier_at(row, OPERATION_ID_INDEX)
-
-
-def _matches_legacy_header(header: Sequence[Any]) -> bool:
-    legacy_headers = (
-        LEGACY_TRANSACTION_COLUMNS,
-        LEGACY_USER_TRANSACTION_SHEET_HEADER,
-        USER_TRANSACTION_SHEET_HEADER,
-        ("ID операции", *LEGACY_USER_TRANSACTION_SHEET_HEADER),
-    )
-    if any(_matches_header(header, expected) for expected in legacy_headers):
-        return True
-
-    previous_headers = (
-        PREVIOUS_USER_TRANSACTION_SHEET_HEADER,
-        ("ID операции", *PREVIOUS_USER_TRANSACTION_SHEET_HEADER),
-    )
-    return any(
-        len(header) > 8 + (expected[0] == "ID операции") and _matches_header(header, expected)
-        for expected in previous_headers
-    )
-
-
-def _matches_header(header: Sequence[Any], expected_header: Sequence[str]) -> bool:
-    matched = False
-    for index, actual in enumerate(header[: len(expected_header)]):
-        if _is_blank(actual):
-            continue
-        if str(actual).strip() != expected_header[index]:
-            return False
-        matched = True
-    return matched and not any(map(_has_value, header[len(expected_header) :]))
 
 
 def _identifier_at(row: Sequence[Any], index: int) -> str:

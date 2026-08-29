@@ -87,11 +87,11 @@ def test_transformer_emits_every_product_quantity_and_service(caplog: Any) -> No
     assert rows[0].logistics == Decimal("-2.00")
     assert rows[0].last_mile == Decimal("-7.00")
     assert rows[0].reverse_logistics == Decimal("-5.00")
-    assert rows[0].other_accruals == Decimal("-9")
+    assert rows[0].unrecognized_accruals == Decimal("-9")
     assert rows[1].last_mile == Decimal("-2.00")
     assert (
         "Unmapped Ozon accrual type 99 (FutureOzonService) for operation 42 "
-        "was stored as other accruals"
+        "was stored as unrecognized accruals"
     ) in caplog.text
 
 
@@ -130,7 +130,7 @@ def test_transformer_handles_item_returns_non_item_and_empty_blocks() -> None:
     assert [row.operation_id for row in rows] == [41, 41, 43]
     assert [row.sku for row in rows] == [3001, 3002, None]
     assert [row.count for row in rows] == [None, None, None]
-    assert rows[0].refund_processing == Decimal("-12.00")
+    assert rows[0].returns_and_cancellations == Decimal("-12.00")
     assert rows[0].amount == Decimal("-12.00")
     assert rows[1].amount == Decimal("0")
     assert rows[2].amount == Decimal("0")
@@ -157,6 +157,26 @@ def test_transformer_rejects_parent_total_mismatch() -> None:
         match=r"operation 44 detail total -1\.00.*total_amount 9\.00.*difference 10\.00",
     ):
         AccrualTransformer().transform(accrual, types, ())
+
+
+def test_transformer_rejects_nonzero_operation_without_monetary_breakdown() -> None:
+    accrual = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 45,
+                    "date": "2026-08-23",
+                    "total_amount": _money("-4.00"),
+                }
+            ]
+        }
+    ).accruals
+
+    with pytest.raises(
+        AccrualIntegrityError,
+        match=r"operation 45 detail total 0.*total_amount -4\.00.*difference -4\.00",
+    ):
+        AccrualTransformer().transform(accrual, (), ())
 
 
 def test_transformer_rejects_delivery_breakdown_mismatch() -> None:
@@ -208,10 +228,60 @@ def test_transformer_preserves_unknown_type_and_reconciles_total(
     with caplog.at_level(logging.WARNING):
         rows = AccrualTransformer().transform(accrual, (), ())
 
-    assert rows[0].other_accruals == Decimal("-3.50")
+    assert rows[0].unrecognized_accruals == Decimal("-3.50")
     assert rows[0].amount == Decimal("-3.50")
-    assert rows[0].other_accruals == rows[0].amount
+    assert rows[0].unrecognized_accruals == rows[0].amount
     assert "type 599 (unknown)" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("type_name", "field"),
+    (
+        ("Logistic", "logistics"),
+        ("LastMileCourier", "last_mile"),
+        ("DeliveryToHandoverPlaceByOzon", "last_mile"),
+        ("ReturnFlowLogistic", "reverse_logistics"),
+        ("PickUpPointReturnAcceptance", "returns_and_cancellations"),
+        ("Cancellation", "returns_and_cancellations"),
+        ("PayPerClick", "advertising"),
+        ("Promotion", "advertising"),
+        ("AcceleratedReviewCollection", "advertising"),
+        ("PremiumCashbackIndividualPoints", "advertising"),
+        ("Acquiring", "acquiring"),
+        ("Placements", "storage"),
+        ("TemporaryPlacement", "storage"),
+        ("ItemPacking", "packaging"),
+        ("PackingFee", "packaging"),
+        ("PackageCost", "packaging"),
+        ("SupplyInbound", "supply_inbound"),
+        ("Disposal", "disposal"),
+        ("CrossDock", "cross_dock"),
+        ("Compensation", "compensations"),
+        ("ItemCompensation", "compensations"),
+    ),
+)
+def test_transformer_maps_every_known_type_to_its_business_category(
+    type_name: str,
+    field: str,
+) -> None:
+    accrual = AccrualPage.from_api(
+        {
+            "accruals": [
+                {
+                    "accrual_id": 47,
+                    "date": "2026-08-23",
+                    "total_amount": _money("-1.25"),
+                    "non_item_fee": _fee(1, "-1.25"),
+                }
+            ]
+        }
+    ).accruals
+    types = parse_accrual_types({"accrual_types": [_type(1, type_name)]})
+
+    rows = AccrualTransformer().transform(accrual, types, ())
+
+    assert getattr(rows[0], field) == Decimal("-1.25")
+    assert rows[0].unrecognized_accruals == Decimal("0")
 
 
 def test_transformer_rejects_conflicting_type_catalogue() -> None:

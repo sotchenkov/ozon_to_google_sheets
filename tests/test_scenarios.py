@@ -32,7 +32,8 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert row.accruals_for_sale == Decimal("100.00")
     assert row.sale_commission_percents == "12.5%"
     assert row.sale_commission == Decimal("-12.50")
-    assert row.other_accruals == Decimal("-5.00")
+    assert row.logistics == Decimal("-5.00")
+    assert row.unrecognized_accruals == Decimal("0")
     assert row.amount == Decimal("82.50")
 
     sheet_values = dict(zip(TRANSACTION_SHEET_HEADER, row.as_list(), strict=True))
@@ -42,9 +43,9 @@ def test_ordinary_operation_maps_current_commission_fields(
     assert sheet_values["Номер отправления или идентификатор услуги"] == "posting-test-0001"
     assert sheet_values["SKU"] == 100001
     assert sheet_values["Количество"] is None
-    assert sheet_values["За продажу или возврат до вычета комиссий и услуг"] == 100.0
+    assert sheet_values["Выручка"] == 100.0
     assert sheet_values["Ставка комиссии"] == "12.5%"
-    assert sheet_values["Комиссия за продажу"] == -12.5
+    assert sheet_values["Комиссия Ozon"] == -12.5
     assert sheet_values["Итого"] == 82.5
 
 
@@ -76,12 +77,12 @@ def test_commissions_and_services_map_to_stable_sheet_columns(
     assert row.sale_commission == Decimal("-11.50")
     assert row.logistics == Decimal("-5.00")
     assert row.last_mile == Decimal("-2.00")
-    assert row.processing_of_cancelled_or_unclaimed_item == Decimal("-1.00")
+    assert row.returns_and_cancellations == Decimal("-1.00")
     assert row.reverse_logistics == Decimal("-9.00")
     assert row.amount == Decimal("71.50")
 
 
-def test_return_and_cancellation_use_distinct_service_columns(
+def test_return_and_cancellation_share_one_business_category(
     load_json_fixture: JsonFixtureLoader,
 ) -> None:
     return_page = AccrualPage.from_api(load_json_fixture("return_operation.json"))
@@ -95,10 +96,8 @@ def test_return_and_cancellation_use_distinct_service_columns(
     )
 
     assert [row.operation_id for row in rows] == [910030, 910031]
-    assert rows[0].refund_processing == Decimal("-18.00")
-    assert rows[0].processing_of_cancelled_or_unclaimed_item == Decimal("0")
-    assert rows[1].refund_processing == Decimal("0")
-    assert rows[1].processing_of_cancelled_or_unclaimed_item == Decimal("-7.00")
+    assert rows[0].returns_and_cancellations == Decimal("-18.00")
+    assert rows[1].returns_and_cancellations == Decimal("-7.00")
 
 
 def test_missing_optional_fields_receive_documented_defaults(

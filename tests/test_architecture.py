@@ -333,7 +333,7 @@ def test_service_orchestrates_new_operations() -> None:
         ("postings", endpoint, ("posting-for-test",)),
     ]
     assert sheet.operation_ids == [42]
-    assert len(sheet.rows[0]) == 16
+    assert len(sheet.rows[0]) == 23
     assert sheet.rows[0][0] == 42
     assert sheet.rows[0][3] == "posting-for-test"
     assert sheet.rows[0][5] == 2
@@ -389,5 +389,5 @@ def _non_item_accrual(accrual_id: int) -> dict[str, Any]:
         "accrued_category": "NON_ITEM",
         "date": "2026-08-23",
         "unit_number": "service-contract",
-        "total_amount": {"amount": "-1", "currency": "RUB"},
+        "total_amount": {"amount": "0", "currency": "RUB"},
     }

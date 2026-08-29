@@ -19,22 +19,44 @@ from .models import (
 DETAIL_FIELDS = (
     "accruals_for_sale",
     "sale_commission",
-    "last_mile",
-    "refund_processing",
-    "processing_of_cancelled_or_unclaimed_item",
     "logistics",
+    "last_mile",
     "reverse_logistics",
-    "other_accruals",
+    "returns_and_cancellations",
+    "advertising",
+    "acquiring",
+    "storage",
+    "packaging",
+    "supply_inbound",
+    "disposal",
+    "cross_dock",
+    "compensations",
+    "unrecognized_accruals",
 )
 
-SERVICE_FIELDS: Mapping[str, str] = {
-    # Current /v1/finance/accrual/types names.
+ACCRUAL_TYPE_FIELDS: Mapping[str, str] = {
+    # Current names returned by /v1/finance/accrual/types.
+    "Logistic": "logistics",
     "LastMileCourier": "last_mile",
     "DeliveryToHandoverPlaceByOzon": "last_mile",
-    "PickUpPointReturnAcceptance": "refund_processing",
-    "Cancellation": "processing_of_cancelled_or_unclaimed_item",
-    "Logistic": "logistics",
     "ReturnFlowLogistic": "reverse_logistics",
+    "PickUpPointReturnAcceptance": "returns_and_cancellations",
+    "Cancellation": "returns_and_cancellations",
+    "PayPerClick": "advertising",
+    "Promotion": "advertising",
+    "AcceleratedReviewCollection": "advertising",
+    "PremiumCashbackIndividualPoints": "advertising",
+    "Acquiring": "acquiring",
+    "Placements": "storage",
+    "TemporaryPlacement": "storage",
+    "ItemPacking": "packaging",
+    "PackingFee": "packaging",
+    "PackageCost": "packaging",
+    "SupplyInbound": "supply_inbound",
+    "Disposal": "disposal",
+    "CrossDock": "cross_dock",
+    "Compensation": "compensations",
+    "ItemCompensation": "compensations",
 }
 
 
@@ -90,15 +112,6 @@ class AccrualTransformer:
         self._apply_fees(rows[0], accrual.container_fees, type_names)
 
         detail_total = _detail_total(rows)
-        if detail_total == 0 and accrual.total_amount.amount != 0 and not _has_details(accrual):
-            rows[0].other_accruals = accrual.total_amount.amount
-            detail_total = accrual.total_amount.amount
-            self._logger.warning(
-                "Ozon operation %s has no monetary breakdown; "
-                "its total was stored as other accruals",
-                accrual.accrual_id,
-            )
-
         if detail_total != accrual.total_amount.amount:
             difference = accrual.total_amount.amount - detail_total
             raise AccrualIntegrityError(
@@ -154,16 +167,16 @@ class AccrualTransformer:
     ) -> None:
         for fee in fees:
             service_name = type_names.get(fee.type_id)
-            field = SERVICE_FIELDS.get(service_name or "")
+            field = ACCRUAL_TYPE_FIELDS.get(service_name or "")
             if field is None:
                 self._logger.warning(
                     "Unmapped Ozon accrual type %s (%s) for operation %s "
-                    "was stored as other accruals",
+                    "was stored as unrecognized accruals",
                     fee.type_id,
                     service_name or "unknown",
                     row.operation_id,
                 )
-                field = "other_accruals"
+                field = "unrecognized_accruals"
             setattr(row, field, getattr(row, field) + fee.accrued.amount)
 
     def _apply_delivery_total(
@@ -189,10 +202,10 @@ class AccrualTransformer:
             return
 
         if total.amount != 0:
-            row.other_accruals += total.amount
+            row.logistics += total.amount
             self._logger.warning(
                 "Ozon operation %s has delivery total %s without service details for SKU %s; "
-                "it was stored as other accruals",
+                "it was stored as logistics",
                 operation_id,
                 total.amount,
                 product.sku,
@@ -228,13 +241,4 @@ def _detail_total(rows: Sequence[TransactionRow]) -> Decimal:
     return sum(
         (getattr(row, field) for row in rows for field in DETAIL_FIELDS),
         start=Decimal("0"),
-    )
-
-
-def _has_details(accrual: Accrual) -> bool:
-    return bool(
-        accrual.posting.products
-        or accrual.item_fees
-        or accrual.non_item_fee
-        or accrual.container_fees
     )
