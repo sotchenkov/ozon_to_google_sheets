@@ -197,8 +197,6 @@ An empty worksheet receives the header automatically even if Ozon returns no acc
 is successful. If the first row already contains another schema, the application stops without
 changing the worksheet.
 
-Schemas used before version `0.1.0` are unsupported and are not migrated automatically.
-
 A long period is processed one day at a time. If one day fails, earlier days remain saved and the
 failing day is not written. The log states the date from which you can resume by setting
 `OZON_DATE_FROM`.
