@@ -1,3 +1,6 @@
+# Operating system files
+.DS_Store
+
 secrets/
 
 # Local Codex instructions
