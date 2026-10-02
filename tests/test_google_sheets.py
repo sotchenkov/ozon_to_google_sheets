@@ -304,6 +304,41 @@ def test_empty_sheet_writes_header_and_every_product_in_one_batch() -> None:
     assert worksheet.rows == [list(SHEET_HEADER), *rows]
 
 
+def test_upsert_expands_full_grid_before_writing_and_does_not_resize_again() -> None:
+    existing = _sheet_row(42, 1001)
+    incoming = _sheet_row(43, 1002)
+    worksheet = FakeWorksheet([list(SHEET_HEADER), existing], row_count=2, col_count=30)
+    adapter = GoogleSheetsAdapter(worksheet)
+
+    adapter.upsert_rows([incoming])
+    adapter.upsert_rows([incoming])
+
+    assert worksheet.resize_calls == [{"rows": 3, "cols": 30}]
+    assert worksheet.rows == [list(SHEET_HEADER), existing, incoming]
+    assert len(worksheet.batch_update_calls) == 1
+
+
+def test_schema_expands_narrow_grid_after_reading_existing_columns() -> None:
+    worksheet = FakeWorksheet([list(SHEET_HEADER[:5])], row_count=1000, col_count=5)
+
+    GoogleSheetsAdapter(worksheet).ensure_schema()
+
+    assert worksheet.get_calls[0]["range_name"] == "A1:E"
+    assert worksheet.resize_calls == [{"rows": 1000, "cols": len(SHEET_HEADER)}]
+    assert worksheet.rows == [list(SHEET_HEADER)]
+
+
+def test_resize_failure_preserves_existing_values_and_prevents_batch_write() -> None:
+    original = [list(SHEET_HEADER), _sheet_row(42, 1001)]
+    worksheet = FakeWorksheet(original, row_count=2, failure="resize")
+
+    with pytest.raises(GoogleSheetsError, match="Could not write transaction rows"):
+        GoogleSheetsAdapter(worksheet).upsert_rows([_sheet_row(43, 1002)])
+
+    assert worksheet.rows == original
+    assert worksheet.batch_update_calls == []
+
+
 def test_upsert_preserves_partial_rows_and_appends_after_last_used_row() -> None:
     original_partial_row = ["manual note"]
     trailing_partial_row = ["", "keep this row"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from math import isfinite
 from typing import Any
 
 USER_TRANSACTION_SHEET_SCHEMA = (
@@ -70,6 +71,8 @@ class Money:
             amount = Decimal(str(raw_amount))
         except InvalidOperation as error:
             raise OzonPayloadError(f"{path}.amount must be a decimal value") from error
+        if not amount.is_finite():
+            raise OzonPayloadError(f"{path}.amount must be a finite decimal value")
         return cls(
             amount=amount,
             currency=_optional_string(data.get("currency"), f"{path}.currency"),
@@ -252,7 +255,7 @@ class AccrualPage:
 
     @classmethod
     def from_api(cls, value: object) -> AccrualPage:
-        data = _mapping(value, "response")
+        data = _response_mapping(value, "accruals", optional_fields=("last_id",))
         accruals = _sequence(data.get("accruals"), "response.accruals")
         return cls(
             accruals=tuple(
@@ -291,7 +294,7 @@ class PostingAccrual:
 
 
 def parse_accrual_types(value: object) -> tuple[AccrualType, ...]:
-    data = _mapping(value, "response")
+    data = _response_mapping(value, "accrual_types")
     items = _sequence(data.get("accrual_types"), "response.accrual_types")
     return tuple(
         AccrualType.from_api(item, f"response.accrual_types[{index}]")
@@ -300,7 +303,7 @@ def parse_accrual_types(value: object) -> tuple[AccrualType, ...]:
 
 
 def parse_posting_accruals(value: object) -> tuple[PostingAccrual, ...]:
-    data = _mapping(value, "response")
+    data = _response_mapping(value, "posting_accruals")
     postings = _sequence(data.get("posting_accruals"), "response.posting_accruals")
     parsed: list[PostingAccrual] = []
     for posting_index, posting_value in enumerate(postings):
@@ -362,8 +365,17 @@ class TransactionRow:
     def as_list(self) -> list[Any]:
         """Return JSON-compatible values in the worksheet's stable order."""
 
-        values = (getattr(self, column) for column in TRANSACTION_COLUMNS)
-        return [float(value) if isinstance(value, Decimal) else value for value in values]
+        values: list[Any] = []
+        for column in TRANSACTION_COLUMNS:
+            value = getattr(self, column)
+            if isinstance(value, Decimal):
+                if not value.is_finite() or not isfinite(float(value)):
+                    raise AccrualIntegrityError(
+                        f"{column} must be a finite number for Google Sheets"
+                    )
+                value = float(value)
+            values.append(value)
+        return values
 
 
 def _find_accrual_fees(value: object, path: str) -> tuple[AccrualFee, ...]:
@@ -390,6 +402,20 @@ def _mapping(value: object, path: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise OzonPayloadError(f"{path} must be an object")
     return value
+
+
+def _response_mapping(
+    value: object,
+    collection: str,
+    *,
+    optional_fields: tuple[str, ...] = (),
+) -> Mapping[str, Any]:
+    data = _mapping(value, "response")
+    if data.keys() & {"error", "code", "message"}:
+        raise OzonPayloadError("response contains an error instead of accrual data")
+    if data and not data.keys() & {collection, *optional_fields}:
+        raise OzonPayloadError(f"response must contain {collection}")
+    return data
 
 
 def _mapping_or_empty(value: object, path: str) -> Mapping[str, Any]:

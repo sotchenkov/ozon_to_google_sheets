@@ -9,6 +9,7 @@ from ozon_to_google_sheets.models import (
     TRANSACTION_COLUMNS,
     TRANSACTION_SHEET_HEADER,
     USER_TRANSACTION_SHEET_HEADER,
+    AccrualIntegrityError,
     AccrualPage,
     Money,
     OzonPayloadError,
@@ -93,6 +94,32 @@ def test_accrual_page_parses_products_fees_and_container_fees() -> None:
 
 def test_accrual_page_accepts_empty_response() -> None:
     assert AccrualPage.from_api({"accruals": [], "last_id": ""}).accruals == ()
+
+
+@pytest.mark.parametrize(
+    "parser",
+    (AccrualPage.from_api, parse_accrual_types, parse_posting_accruals),
+)
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"result": {"accruals": []}},
+        {"error": {"message": "synthetic failure"}},
+        {"code": 7, "message": "synthetic failure"},
+        {"accruals": [], "accrual_types": [], "posting_accruals": [], "error": {}},
+    ),
+)
+def test_response_parsers_reject_unexpected_or_error_envelopes(parser, payload) -> None:
+    with pytest.raises(OzonPayloadError, match="response"):
+        parser(payload)
+
+
+def test_response_parsers_preserve_omitted_empty_fields_and_extra_metadata() -> None:
+    assert AccrualPage.from_api({}).accruals == ()
+    assert AccrualPage.from_api({"last_id": "next-page"}).last_id == "next-page"
+    assert parse_accrual_types({}) == ()
+    assert parse_posting_accruals({}) == ()
+    assert AccrualPage.from_api({"accruals": [], "new_metadata": "value"}).accruals == ()
 
 
 def test_accrual_page_reports_field_path_for_invalid_payload() -> None:
@@ -197,6 +224,20 @@ def test_transaction_sheet_header_is_the_exact_russian_user_schema() -> None:
 def test_money_rejects_invalid_decimal_values(amount: object) -> None:
     with pytest.raises(OzonPayloadError, match=r"money\.amount must be a decimal value"):
         Money.from_api({"amount": amount}, "money")
+
+
+@pytest.mark.parametrize("amount", ("NaN", "sNaN", "Infinity", "-Infinity", float("nan")))
+def test_money_rejects_nonfinite_decimal_values(amount: object) -> None:
+    with pytest.raises(OzonPayloadError, match="money.amount must be a finite decimal value"):
+        Money.from_api({"amount": amount}, "money")
+
+
+@pytest.mark.parametrize("amount", ("NaN", "sNaN", "Infinity", "-Infinity", "1e9999"))
+def test_transaction_row_rejects_values_that_cannot_be_finite_json_numbers(amount: str) -> None:
+    row = TransactionRow(amount=Decimal(amount))
+
+    with pytest.raises(AccrualIntegrityError, match="amount must be a finite number"):
+        row.as_list()
 
 
 @pytest.mark.parametrize(

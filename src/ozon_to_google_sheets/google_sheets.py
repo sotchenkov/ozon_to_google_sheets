@@ -14,6 +14,7 @@ import gspread
 import requests
 from gspread.exceptions import APIError
 from gspread.http_client import HTTPClient
+from gspread.utils import a1_to_rowcol
 
 from .models import (
     TRANSACTION_COLUMNS,
@@ -35,7 +36,6 @@ OPERATION_ID_INDEX = TRANSACTION_COLUMNS.index("operation_id")
 SKU_INDEX = TRANSACTION_COLUMNS.index("sku")
 FIRST_DATA_ROW = 2
 LAST_COLUMN = _column_name(COLUMN_COUNT)
-SHEET_RANGE = f"A1:{LAST_COLUMN}"
 RowKey = tuple[str, str]
 GOOGLE_REQUEST_TIMEOUT = (5.0, 30.0)
 GOOGLE_REQUEST_ATTEMPTS = 3
@@ -78,6 +78,11 @@ class ReliableHTTPClient(HTTPClient):
 
 
 class Worksheet(Protocol):
+    row_count: int
+    col_count: int
+
+    def resize(self, *, rows: int, cols: int) -> Any: ...
+
     def get(
         self,
         range_name: str,
@@ -205,7 +210,7 @@ class GoogleSheetsAdapter:
     def _read_values(self) -> list[list[Any]]:
         try:
             values = self._worksheet.get(
-                SHEET_RANGE,
+                f"A1:{_column_name(min(COLUMN_COUNT, self._worksheet.col_count))}",
                 value_render_option="UNFORMATTED_VALUE",
             )
         except Exception as error:
@@ -216,6 +221,17 @@ class GoogleSheetsAdapter:
 
     def _write_updates(self, updates: Sequence[dict[str, Any]]) -> None:
         try:
+            required_rows = max(
+                a1_to_rowcol(update["range"].split(":")[-1])[0] for update in updates
+            )
+            if (
+                required_rows > self._worksheet.row_count
+                or COLUMN_COUNT > self._worksheet.col_count
+            ):
+                self._worksheet.resize(
+                    rows=max(required_rows, self._worksheet.row_count),
+                    cols=max(COLUMN_COUNT, self._worksheet.col_count),
+                )
             self._worksheet.batch_update(updates, value_input_option="RAW")
         except Exception as error:
             message = "Could not write transaction rows to Google Sheets"

@@ -197,6 +197,10 @@ An empty worksheet receives the header automatically even if Ozon returns no acc
 is successful. If the first row already contains another schema, the application stops without
 changing the worksheet.
 
+If new data needs more rows or columns, the application expands the worksheet before writing.
+Unexpected Ozon response structures and invalid monetary values stop the export with exit code
+`1` so that incomplete data for the day is not written.
+
 A multi-day period is processed one day at a time. If one day fails, earlier days remain saved and
 the failing day is not written. The log states the date from which you can resume by setting
 `OZON_DATE_FROM`.
