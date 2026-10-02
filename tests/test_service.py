@@ -7,12 +7,45 @@ from typing import Any
 
 import pytest
 
-from ozon_to_google_sheets.models import Accrual, AccrualPage, parse_accrual_types
+from ozon_to_google_sheets.models import Accrual, AccrualPage, OzonPayloadError, parse_accrual_types
+from ozon_to_google_sheets.ozon import OzonClient
 from ozon_to_google_sheets.service import SyncService
-from tests.fakes import FakeOperationsSheet, FakeOzonGateway
+from tests.fakes import FakeHTTPPost, FakeOperationsSheet, FakeOzonGateway, FakeResponse
 
 ENDPOINT = "https://example.invalid/v1/finance/accrual/by-day"
 JsonFixtureLoader = Callable[[str], dict[str, Any]]
+
+
+@pytest.mark.parametrize(
+    "bad_page",
+    (
+        {"error": {"message": "synthetic failure"}},
+        {"accruals": [{"accrual_id": 43, "date": "2026-08-20", "total_amount": {"amount": "NaN"}}]},
+    ),
+)
+def test_service_does_not_write_partial_day_after_invalid_later_page(bad_page) -> None:
+    ozon = OzonClient(
+        "token",
+        "client",
+        post=FakeHTTPPost(
+            [
+                FakeResponse(
+                    payload={
+                        "accruals": [{"accrual_id": 42, "date": "2026-08-20"}],
+                        "last_id": "next",
+                    }
+                ),
+                FakeResponse(payload=bad_page),
+            ]
+        ),
+    )
+    sheet = FakeOperationsSheet()
+    service = SyncService(ozon, sheet, ENDPOINT, date(2026, 8, 20), date(2026, 8, 20))
+
+    with pytest.raises(OzonPayloadError):
+        service.run()
+
+    assert sheet.upsert_calls == 0
 
 
 def test_service_skips_type_catalogue_for_fee_free_product(
