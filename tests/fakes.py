@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 
 import requests
+from gspread.utils import a1_to_rowcol
 
 from ozon_to_google_sheets.models import Accrual, AccrualType, PostingAccrual
 
@@ -88,9 +89,14 @@ class FakeWorksheet:
         rows: Sequence[Sequence[Any]] | None = None,
         *,
         failure: str | None = None,
+        row_count: int = 1000,
+        col_count: int = 26,
     ) -> None:
         self.rows = [list(row) for row in (rows or [])]
         self.failure = failure
+        self.row_count = row_count
+        self.col_count = col_count
+        self.resize_calls: list[dict[str, int]] = []
         self.get_calls: list[dict[str, str]] = []
         self.batch_update_calls: list[dict[str, Any]] = []
 
@@ -108,7 +114,16 @@ class FakeWorksheet:
         )
         if self.failure == "read":
             raise RuntimeError("fake read failure")
+        if a1_to_rowcol(range_name.split(":")[-1] + "1")[1] > self.col_count:
+            raise RuntimeError("range exceeds grid limits")
         return [list(row) for row in self.rows]
+
+    def resize(self, *, rows: int, cols: int) -> None:
+        if self.failure == "resize":
+            raise RuntimeError("fake resize failure")
+        self.resize_calls.append({"rows": rows, "cols": cols})
+        self.row_count = rows
+        self.col_count = cols
 
     def batch_update(
         self,
@@ -118,6 +133,10 @@ class FakeWorksheet:
     ) -> None:
         if self.failure == "write":
             raise RuntimeError("fake write failure")
+        for update in data:
+            last_row, last_col = a1_to_rowcol(update["range"].split(":")[-1])
+            if last_row > self.row_count or last_col > self.col_count:
+                raise RuntimeError("range exceeds grid limits")
         self.batch_update_calls.append(
             {"data": list(data), "value_input_option": value_input_option}
         )

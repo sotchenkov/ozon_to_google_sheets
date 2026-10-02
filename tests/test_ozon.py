@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 import requests
 
+from ozon_to_google_sheets.models import OzonPayloadError
 from ozon_to_google_sheets.ozon import (
     OzonAPIError,
     OzonClient,
@@ -56,6 +57,23 @@ def test_client_rejects_repeated_pagination_cursor() -> None:
     client = OzonClient("token", "client", post=post, sleep=no_sleep)
 
     with pytest.raises(OzonPaginationError, match="cursor repeated"):
+        client.get_accruals(ENDPOINT, date(2026, 8, 23), date(2026, 8, 23))
+
+
+def test_client_rejects_malformed_later_page_instead_of_returning_partial_accruals() -> None:
+    client = OzonClient(
+        "token",
+        "client",
+        post=FakeHTTPPost(
+            [
+                FakeResponse(payload=_page([_accrual(42)], "cursor-1")),
+                FakeResponse(payload={"unexpected": {"accruals": []}}),
+            ]
+        ),
+        sleep=no_sleep,
+    )
+
+    with pytest.raises(OzonPayloadError, match="response must contain accruals"):
         client.get_accruals(ENDPOINT, date(2026, 8, 23), date(2026, 8, 23))
 
 
