@@ -338,10 +338,9 @@ OZON_ENV_FILE=.env.example docker compose config --quiet
 ## Помощь и поддержка
 
 Можем помочь на коммерческой основе с развёртыванием проекта на вашем сервере или сделать всё
-«под ключ»: подготовить инфраструктуру, настроить и администрировать проект. Обращайтесь:
+«под ключ»: подготовить инфраструктуру, настроить и администрировать проект.
 
-- Telegram: [@sotchenkov](https://t.me/sotchenkov)
-- Email: [sotchenkoff@gmail.com](mailto:sotchenkoff@gmail.com)
+Услуги и контакты: [ipantonenkosv.ru](https://ipantonenkosv.ru/)
 
 Поддержать проект:
 

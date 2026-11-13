@@ -340,10 +340,9 @@ The remaining checks and container publication are defined in the CI workflow.
 ## Help and support
 
 We offer commercial help with deploying the project on your server or delivering everything
-turnkey: infrastructure setup, deployment, and administration. Contact us:
+turnkey: infrastructure setup, deployment, and administration.
 
-- Telegram: [@sotchenkov](https://t.me/sotchenkov)
-- Email: [sotchenkoff@gmail.com](mailto:sotchenkoff@gmail.com)
+Services and contact details: [ipantonenkosv.ru](https://ipantonenkosv.ru/)
 
 Support the project:
 
