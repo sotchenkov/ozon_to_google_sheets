@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
 [![Coverage ≥95%](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen?style=flat-square)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
-[![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.10–3.15](https://img.shields.io/badge/Python-3.10%E2%80%933.15-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: Elastic 2.0](https://img.shields.io/badge/license-Elastic%202.0-005571?style=flat-square)](LICENSE)
 
@@ -314,14 +314,14 @@ uv run --locked pytest
 uv build
 ```
 
-Repeat this block with `--python 3.14`: CI tests the lowest and highest supported Python versions.
+Repeat this block with `--python 3.14` and `--python 3.15`: CI tests Python 3.10, 3.14, and 3.15.
 Tests run without access to Ozon or Google.
 
 To verify the built wheel in a clean environment:
 
 ```console
 package_environment="$(mktemp -d)/venv"
-uv venv --python 3.14 "$package_environment"
+uv venv --python 3.15 "$package_environment"
 uv pip install --python "$package_environment/bin/python" dist/*.whl
 "$package_environment/bin/python" -c "import ozon_to_google_sheets"
 test -x "$package_environment/bin/ozon-to-google-sheets"
