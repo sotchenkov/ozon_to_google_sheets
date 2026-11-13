@@ -340,7 +340,7 @@ OZON_ENV_FILE=.env.example docker compose config --quiet
 Можем помочь на коммерческой основе с развёртыванием проекта на вашем сервере или сделать всё
 «под ключ»: подготовить инфраструктуру, настроить и администрировать проект.
 
-Услуги и контакты: [ipantonenkosv.ru](https://ipantonenkosv.ru/)
+Услуги и контакты: [ipantonenkosv.ru](https://ipantonenkosv.ru/?utm_source=github&utm_campaign=ozon_to_google_sheets)
 
 Поддержать проект:
 
