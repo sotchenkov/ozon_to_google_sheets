@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
 [![Coverage ≥95%](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen?style=flat-square)](https://github.com/sotchenkov/ozon_to_google_sheets/actions/workflows/ci.yml)
-[![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.10–3.15](https://img.shields.io/badge/Python-3.10%E2%80%933.15-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: Elastic 2.0](https://img.shields.io/badge/license-Elastic%202.0-005571?style=flat-square)](LICENSE)
 
@@ -312,14 +312,14 @@ uv run --locked pytest
 uv build
 ```
 
-Повторите этот блок с `--python 3.14`: CI проверяет нижнюю и верхнюю заявленные версии Python.
+Повторите этот блок с `--python 3.14` и `--python 3.15`: CI проверяет Python 3.10, 3.14 и 3.15.
 Тесты работают без доступа к Ozon и Google.
 
 Проверка установки собранного wheel в чистое окружение:
 
 ```console
 package_environment="$(mktemp -d)/venv"
-uv venv --python 3.14 "$package_environment"
+uv venv --python 3.15 "$package_environment"
 uv pip install --python "$package_environment/bin/python" dist/*.whl
 "$package_environment/bin/python" -c "import ozon_to_google_sheets"
 test -x "$package_environment/bin/ozon-to-google-sheets"
@@ -338,10 +338,9 @@ OZON_ENV_FILE=.env.example docker compose config --quiet
 ## Помощь и поддержка
 
 Можем помочь на коммерческой основе с развёртыванием проекта на вашем сервере или сделать всё
-«под ключ»: подготовить инфраструктуру, настроить и администрировать проект. Обращайтесь:
+«под ключ»: подготовить инфраструктуру, настроить и администрировать проект.
 
-- Telegram: [@sotchenkov](https://t.me/sotchenkov)
-- Email: [sotchenkoff@gmail.com](mailto:sotchenkoff@gmail.com)
+Услуги и контакты: [ipantonenkosv.ru](https://ipantonenkosv.ru/)
 
 Поддержать проект:
 

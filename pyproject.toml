@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "ozon-to-google-sheets"
-version = "0.2.2"
+version = "0.2.3"
 description = "Export Ozon seller finance transactions to Google Sheets"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
     "gspread>=6.2.1,<7",
