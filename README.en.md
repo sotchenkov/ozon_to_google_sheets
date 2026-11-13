@@ -342,7 +342,7 @@ The remaining checks and container publication are defined in the CI workflow.
 We offer commercial help with deploying the project on your server or delivering everything
 turnkey: infrastructure setup, deployment, and administration.
 
-Services and contact details: [ipantonenkosv.ru](https://ipantonenkosv.ru/)
+Services and contact details: [ipantonenkosv.ru](https://ipantonenkosv.ru/?utm_source=github&utm_campaign=ozon_to_google_sheets)
 
 Support the project:
 
